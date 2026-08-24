@@ -1,7 +1,5 @@
 import streamlit as st
 import json
-from xhtml2pdf import pisa
-from io import BytesIO
 import google.generativeai as genai
 from PIL import Image
 from datetime import date
