@@ -42,6 +42,24 @@ HSN_CODES = {
     "09246BL": "721610", "09256BL": "721610", "09427BL": "721610"
 }
 
+CLIENT_DATABASE = {
+    "Lagan Engineering Co. Ltd.": {
+        "Address": "14 Mohd. Ishaque Road, Kolkata - 700016",
+        "GSTIN": "19AAACT9986F1ZP",
+        "State": "West Bengal   Code: 19"
+    },
+    "ABC Manufacturing": {
+        "Address": "123 Industrial Estate, Mumbai - 400001",
+        "GSTIN": "27AAACA1234Z1ZA",
+        "State": "Maharashtra   Code: 27"
+    },
+    "XYZ Traders": {
+        "Address": "45 Market Street, Delhi - 110001",
+        "GSTIN": "07AAACX9876Q1Z2",
+        "State": "Delhi   Code: 07"
+    }
+}
+
 def num_to_words(num):
     units = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
              "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"]
@@ -69,8 +87,8 @@ def num_to_words(num):
     if paise > 0: words += f" and {two_digits(paise)} Paise"
     return words + " Only"
 
-def extract_bill_details(image_file):
-    model = genai.GenerativeModel("gemini-3.6-flash")
+def extract_bill_details(uploaded_file):
+    model = genai.GenerativeModel("gemini-2.5-flash")
     prompt = """
     Extract all billing and item details from this bill/PO into a clean JSON structure:
     {
@@ -88,26 +106,52 @@ def extract_bill_details(image_file):
     }
     Extract handwritten overrides if present. Return ONLY valid JSON.
     """
-    img = Image.open(image_file)
-    response = model.generate_content([prompt, img])
-    clean_text = response.text.replace("```json", "").replace("```", "").strip()
-    return json.loads(clean_text)
+    
+    # Handle PDF natively or image
+    if uploaded_file.name.lower().endswith('.pdf'):
+        payload = [prompt, {"mime_type": "application/pdf", "data": uploaded_file.getvalue()}]
+    else:
+        img = Image.open(uploaded_file)
+        payload = [prompt, img]
+
+    try:
+        response = model.generate_content(payload)
+        clean_text = response.text.replace("```json", "").replace("```", "").strip()
+        return json.loads(clean_text)
+    except Exception:
+        return {}
 
 # -------------------------------------------------------------
 # Streamlit App UI
 # -------------------------------------------------------------
 st.title("📄 Murli Steel Invoicer")
 
-doc_type = st.radio("Document Type", ["PROFORMA INVOICE", "TAX INVOICE"], horizontal=True)
-inv_no = st.text_input("Invoice Number", value="PI/07/2026-27" if doc_type == "PROFORMA INVOICE" else "MSC/20/2026-27")
-inv_date = st.text_input("Invoice Date", value=date.today().strftime("%d-%m-%Y"))
+doc_type = st.radio("Document Type", ["PROFORMA INVOICE", "TAX INVOICE", "QUOTATION"], horizontal=True)
 
-uploaded_file = st.file_uploader("📷 Snap Photo or Upload Bill", type=["jpg", "jpeg", "png", "pdf"])
+if doc_type == "PROFORMA INVOICE":
+    default_inv = "PI/07/2026-27"
+elif doc_type == "TAX INVOICE":
+    default_inv = "MSC/20/2026-27"
+else:
+    default_inv = "QT/07/2026-27"
+
+inv_no = st.text_input("Document Number", value=default_inv)
+inv_date = st.text_input("Document Date", value=date.today().strftime("%d-%m-%Y"))
+
+selected_client_name = st.selectbox("Select Client", list(CLIENT_DATABASE.keys()))
+client_info = CLIENT_DATABASE[selected_client_name]
+
+uploaded_file = st.file_uploader("📷 Snap Photo or Upload Bill / PDF", type=["jpg", "jpeg", "png", "pdf"])
 
 if uploaded_file is not None:
-    if "extracted_data" not in st.session_state or st.button("🔄 Re-Scan Image"):
+    if "extracted_data" not in st.session_state or st.button("🔄 Re-Scan Document"):
         with st.spinner("Analyzing document..."):
-            st.session_state.extracted_data = extract_bill_details(uploaded_file)
+            extracted = extract_bill_details(uploaded_file)
+            if not extracted:
+                st.error("Couldn't read the document clearly. Try a clearer image or manually enter details below.")
+                st.session_state.extracted_data = {}
+            else:
+                st.session_state.extracted_data = extracted
 
     data = st.session_state.extracted_data
     
@@ -121,11 +165,12 @@ if uploaded_file is not None:
     edited_items = []
     for i, itm in enumerate(data.get("items", []), 1):
         with st.expander(f"Item #{i} - {itm.get('code', '')}", expanded=True):
-            col_a, col_b, col_c = st.columns(3)
+            col_a, col_b, col_c, col_d = st.columns(4)
             code = col_a.text_input(f"Code #{i}", value=itm.get("code", ""), key=f"c_{i}")
-            qty = col_b.number_input(f"Qty (kg) #{i}", value=float(itm.get("qty", 0.0)), key=f"q_{i}")
-            rate = col_c.number_input(f"Rate (₹/kg) #{i}", value=float(itm.get("rate", 0.0)), key=f"r_{i}")
-            edited_items.append({"code": code, "qty": qty, "rate": rate, "pcs": itm.get("pcs", "")})
+            pcs = col_b.text_input(f"Pcs #{i}", value=str(itm.get("pcs", "")), key=f"p_{i}")
+            qty = col_c.number_input(f"Qty (kg) #{i}", value=float(itm.get("qty", 0.0)), key=f"q_{i}")
+            rate = col_d.number_input(f"Rate (₹/kg) #{i}", value=float(itm.get("rate", 0.0)), key=f"r_{i}")
+            edited_items.append({"code": code, "qty": qty, "rate": rate, "pcs": pcs})
 
     # Calculations
     total_taxable = sum(it["qty"] * it["rate"] for it in edited_items)
@@ -140,18 +185,14 @@ if uploaded_file is not None:
     st.write(f"### **Grand Total:** ₹{grand_total:,.2f}")
 
     if st.button("✅ Generate PDF", type="primary", use_container_width=True):
-        try:
-            from weasyprint import HTML
-        except Exception as e:
-            st.error("PDF generation is disabled on Windows. Please push to GitHub to use this feature on Streamlit Cloud.")
-            st.stop()
+        from weasyprint import HTML
             
         rows_html = ""
         for idx, itm in enumerate(edited_items, 1):
             desc = MASTER_DESCRIPTIONS.get(itm['code'], itm['code'])
             hsn = HSN_CODES.get(itm['code'], "721550")
             tax_val = itm['qty'] * itm['rate']
-            rows_html += f'''
+            rows_html += f"""
             <tr>
                 <td>{idx}</td>
                 <td>{itm['code']}</td>
@@ -162,9 +203,9 @@ if uploaded_file is not None:
                 <td style="text-align: right;">{itm['rate']:,.2f}</td>
                 <td style="text-align: right;">{tax_val:,.2f}</td>
             </tr>
-            '''
+            """
 
-        full_html = f'''
+        full_html = f"""
         <!DOCTYPE html>
         <html>
         <head>
@@ -211,24 +252,24 @@ if uploaded_file is not None:
             <table class="info-table">
                 <tr>
                     <td style="width: 50%;" class="section-title">BILLED TO PARTY</td>
-                    <td style="width: 50%;" class="section-title">INVOICE DETAILS</td>
+                    <td style="width: 50%;" class="section-title">DOCUMENT DETAILS</td>
                 </tr>
                 <tr>
                     <td style="padding:0;">
                         <table style="width:100%; border-collapse:collapse;">
-                            <tr><td style="width:25%; border:none; padding:3px;">Name:</td><td style="border:none; padding:3px; font-weight:bold;">Lagan Engineering Co. Ltd.</td></tr>
-                            <tr><td style="border:none; padding:3px;">Address:</td><td style="border:none; padding:3px;">14 Mohd. Ishaque Road, Kolkata - 700016</td></tr>
-                            <tr><td style="border:none; padding:3px;">GSTIN:</td><td style="border:none; padding:3px; font-weight:bold;">19AAACT9986F1ZP</td></tr>
+                            <tr><td style="width:25%; border:none; padding:3px;">Name:</td><td style="border:none; padding:3px; font-weight:bold;">{selected_client_name}</td></tr>
+                            <tr><td style="border:none; padding:3px;">Address:</td><td style="border:none; padding:3px;">{client_info['Address']}</td></tr>
+                            <tr><td style="border:none; padding:3px;">GSTIN:</td><td style="border:none; padding:3px; font-weight:bold;">{client_info['GSTIN']}</td></tr>
                             <tr><td style="border:none; padding:3px;">Order No.:</td><td style="border:none; padding:3px;">{order_no}</td></tr>
                             <tr><td style="border:none; padding:3px;">Order Date:</td><td style="border:none; padding:3px;">{order_date}</td></tr>
-                            <tr><td style="border:none; padding:3px;">State:</td><td style="border:none; padding:3px;">West Bengal &nbsp;&nbsp;&nbsp; Code: 19</td></tr>
+                            <tr><td style="border:none; padding:3px;">State:</td><td style="border:none; padding:3px;">{client_info['State']}</td></tr>
                         </table>
                     </td>
                     <td style="padding:0;">
                         <table style="width:100%; border-collapse:collapse;">
-                            <tr><td style="width:35%; border:none; padding:3px;">Invoice No.:</td><td style="border:none; padding:3px; font-weight:bold;">{inv_no}</td></tr>
-                            <tr><td style="border:none; padding:3px;">Invoice Date:</td><td style="border:none; padding:3px; font-weight:bold;">{inv_date}</td></tr>
-                            <tr><td style="border:none; padding:3px;">Terms:</td><td style="border:none; padding:3px;">Proforma Invoice</td></tr>
+                            <tr><td style="width:35%; border:none; padding:3px;">Doc No.:</td><td style="border:none; padding:3px; font-weight:bold;">{inv_no}</td></tr>
+                            <tr><td style="border:none; padding:3px;">Doc Date:</td><td style="border:none; padding:3px; font-weight:bold;">{inv_date}</td></tr>
+                            <tr><td style="border:none; padding:3px;">Terms:</td><td style="border:none; padding:3px;">{doc_type}</td></tr>
                             <tr><td style="border:none; padding:3px;">Supply:</td><td style="border:none; padding:3px;">West Bengal</td></tr>
                         </table>
                     </td>
@@ -237,7 +278,7 @@ if uploaded_file is not None:
 
             <table class="info-table" style="border-top:none;">
                 <tr>
-                    <td style="width: 55%; border-top:none;">Delivery At: Lagan Engineering Co. Ltd., Kolkata - 700016</td>
+                    <td style="width: 55%; border-top:none;">Delivery At: {selected_client_name}, {client_info['Address']}</td>
                     <td style="width: 20%; border-top:none;">Transport: Lorry</td>
                     <td style="width: 25%; border-top:none;">Vehicle No. : </td>
                 </tr>
@@ -308,7 +349,7 @@ if uploaded_file is not None:
         </div>
         </body>
         </html>
-        '''
+        """
         
         pdf_bytes = HTML(string=full_html).write_pdf()
         st.download_button(
