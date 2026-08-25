@@ -118,7 +118,8 @@ def extract_bill_details(image_file):
     clean_text = response.text.replace("```json", "").replace("```", "").strip()
     try:
         return json.loads(clean_text)
-    except Exception:
+    except Exception as e:
+        st.error(f"Error parsing JSON: {e}. Raw response: {clean_text}")
         return {}
 
 # -------------------------------------------------------------
