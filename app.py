@@ -118,6 +118,226 @@ def extract_bill_details(image_file):
     except Exception:
         return {}
 
+import io
+
+def create_excel(doc_type, inv_no, inv_date, selected_client_name, client_info, order_no, order_date, edited_items, del_charges):
+    import openpyxl
+    from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+    
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Invoice"
+
+    # Define styles
+    bold_font = Font(bold=True)
+    title_font = Font(bold=True, size=16, color="003399")
+    header_fill = PatternFill(start_color="F0F0F0", end_color="F0F0F0", fill_type="solid")
+    center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left_align = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    right_align = Alignment(horizontal="right", vertical="center", wrap_text=True)
+    
+    thin = Side(border_style="thin", color="000000")
+    box_border = Border(top=thin, left=thin, right=thin, bottom=thin)
+    no_border = Border()
+
+    # Set column widths
+    cols = [("A", 6), ("B", 18), ("C", 50), ("D", 12), ("E", 10), ("F", 15), ("G", 15), ("H", 20)]
+    for col, width in cols:
+        ws.column_dimensions[col].width = width
+
+    # Row 1: Header
+    ws.merge_cells("C1:F1")
+    ws["C1"].value = doc_type
+    ws["C1"].font = bold_font
+    ws["C1"].alignment = center_align
+
+    ws.merge_cells("G1:H1")
+    ws["G1"].value = "Original for Buyer/ Seller"
+    ws["G1"].alignment = right_align
+
+    # Row 2-4: Company Info
+    ws.merge_cells("A2:H2")
+    ws["A2"].value = "MURLI STEEL CORPORATION"
+    ws["A2"].font = title_font
+    ws["A2"].alignment = center_align
+
+    ws.merge_cells("A3:H3")
+    ws["A3"].value = "9/12, Lal Bazar Street, Mercantile Building, 'B' Block, 1st Floor, Kolkata - 700001, India\nPhone: (033) 2210 1650 | Mobile: 9830242818 | Email: shradkakrania@gmail.com"
+    ws["A3"].alignment = center_align
+    ws.row_dimensions[3].height = 30
+
+    ws.merge_cells("A4:H4")
+    ws["A4"].value = "PAN: AKAPK4846L | GSTIN: 19AKAPK4846L1ZS"
+    ws["A4"].font = bold_font
+    ws["A4"].alignment = center_align
+
+    # Info table
+    ws.merge_cells("A5:D5")
+    ws["A5"].value = "BILLED TO PARTY"
+    ws.merge_cells("E5:H5")
+    ws["E5"].value = "INVOICE DETAILS"
+    for col in ["A", "E"]:
+        ws[f"{col}5"].font = bold_font
+        ws[f"{col}5"].fill = header_fill
+        ws[f"{col}5"].alignment = center_align
+        ws[f"{col}5"].border = box_border
+    
+    # Merge cells for better layout and add borders
+    info_rows = [
+        ("Name:", selected_client_name, "Invoice No.:", inv_no),
+        ("Address:", client_info.get('Address', ''), "Invoice Date:", inv_date),
+        ("GSTIN:", client_info.get('GSTIN', ''), "Terms:", doc_type),
+        ("Order No.:", order_no, "Supply:", "West Bengal"),
+        ("Order Date:", order_date, "", ""),
+        ("State:", client_info.get('State', ''), "", "")
+    ]
+    
+    row_idx = 6
+    for row_data in info_rows:
+        ws[f"A{row_idx}"] = row_data[0]
+        ws.merge_cells(f"B{row_idx}:D{row_idx}")
+        ws[f"B{row_idx}"] = row_data[1]
+        if "Name:" in row_data[0] or "GSTIN" in row_data[0] or "Invoice No." in row_data[2] or "Invoice Date" in row_data[2]:
+            ws[f"B{row_idx}"].font = bold_font
+            ws[f"F{row_idx}"].font = bold_font
+            
+        ws[f"E{row_idx}"] = row_data[2]
+        ws.merge_cells(f"F{row_idx}:H{row_idx}")
+        ws[f"F{row_idx}"] = row_data[3]
+        
+        # Add outer borders for info section
+        for c in range(1, 9):
+            if c == 1 or c == 5:
+                ws.cell(row=row_idx, column=c).border = Border(left=thin)
+            elif c == 4 or c == 8:
+                ws.cell(row=row_idx, column=c).border = Border(right=thin)
+        row_idx += 1
+
+    # Delivery
+    ws.merge_cells(f"A{row_idx}:D{row_idx}")
+    ws[f"A{row_idx}"] = f"Delivery At: {client_info.get('Delivery', '')}"
+    ws.merge_cells(f"E{row_idx}:F{row_idx}")
+    ws[f"E{row_idx}"] = "Transport: Lorry"
+    ws.merge_cells(f"G{row_idx}:H{row_idx}")
+    ws[f"G{row_idx}"] = "Vehicle No.:"
+    
+    for c in [1, 5, 7]:
+        ws.cell(row=row_idx, column=c).border = Border(top=thin, bottom=thin)
+    row_idx += 1
+
+    # Items Header
+    headers = ["SN", "Item Code", "Description", "HSN", "Pcs", "Qty", "Rate", "Value (INR)"]
+    for c_idx, h in enumerate(headers, 1):
+        cell = ws.cell(row=row_idx, column=c_idx, value=h)
+        cell.font = bold_font
+        cell.fill = header_fill
+        cell.alignment = center_align
+        cell.border = box_border
+    row_idx += 1
+    
+    start_item_row = row_idx
+    # Items
+    for idx, itm in enumerate(edited_items, 1):
+        desc = MASTER_DESCRIPTIONS.get(itm['code'], itm['code'])
+        hsn = HSN_CODES.get(itm['code'], "721550")
+        
+        ws.cell(row=row_idx, column=1, value=idx).alignment = center_align
+        ws.cell(row=row_idx, column=2, value=itm['code']).alignment = center_align
+        ws.cell(row=row_idx, column=3, value=desc).alignment = left_align
+        ws.cell(row=row_idx, column=4, value=hsn).alignment = center_align
+        ws.cell(row=row_idx, column=5, value=itm.get('pcs', '')).alignment = center_align
+        ws.cell(row=row_idx, column=6, value=itm['qty']).alignment = center_align
+        ws.cell(row=row_idx, column=7, value=itm['rate']).alignment = right_align
+        
+        # Formula for value
+        ws.cell(row=row_idx, column=8, value=f"=F{row_idx}*G{row_idx}").alignment = right_align
+        
+        for c in range(1, 9):
+            ws.cell(row=row_idx, column=c).border = box_border
+        row_idx += 1
+
+    # Totals Row
+    ws.merge_cells(f"A{row_idx}:D{row_idx}")
+    ws.cell(row=row_idx, column=1, value="TOTAL:").alignment = right_align
+    ws.cell(row=row_idx, column=1).font = bold_font
+    
+    ws.cell(row=row_idx, column=6, value=f"=SUM(F{start_item_row}:F{row_idx-1})").font = bold_font
+    ws.cell(row=row_idx, column=6).alignment = center_align
+    ws.cell(row=row_idx, column=8, value=f"=SUM(H{start_item_row}:H{row_idx-1})").font = bold_font
+    ws.cell(row=row_idx, column=8).alignment = right_align
+    
+    for c in range(1, 9):
+        ws.cell(row=row_idx, column=c).border = box_border
+        
+    row_idx += 2
+    
+    # Totals Box
+    ws.merge_cells(f"A{row_idx}:E{row_idx}")
+    ws[f"A{row_idx}"] = "Total Invoice Amount in Words:"
+    ws[f"A{row_idx}"].font = bold_font
+    
+    ws.merge_cells(f"F{row_idx}:G{row_idx}")
+    ws[f"F{row_idx}"] = "Total Amount Before Tax"
+    ws[f"H{row_idx}"] = f"=H{row_idx-2}"
+    for c in range(6, 9): ws.cell(row=row_idx, column=c).border = box_border
+    row_idx += 1
+
+    # In Words string needs to be static since Excel formula for num2words is complex
+    total_taxable = sum(it["qty"] * it["rate"] for it in edited_items)
+    taxable_val = total_taxable + del_charges
+    cgst = taxable_val * 0.09
+    sgst = taxable_val * 0.09
+    grand_total = taxable_val + cgst + sgst
+
+    ws.merge_cells(f"A{row_idx}:E{row_idx+4}")
+    ws[f"A{row_idx}"] = num_to_words(grand_total) + "\n(Note: Text will not auto-update if you edit values in Excel)"
+    ws[f"A{row_idx}"].alignment = left_align
+    
+    ws.merge_cells(f"F{row_idx}:G{row_idx}")
+    ws[f"F{row_idx}"] = "Delivery Charges"
+    ws[f"H{row_idx}"] = del_charges
+    for c in range(6, 9): ws.cell(row=row_idx, column=c).border = box_border
+    row_idx += 1
+
+    ws.merge_cells(f"F{row_idx}:G{row_idx}")
+    ws[f"F{row_idx}"] = "Taxable Value"
+    ws[f"H{row_idx}"] = f"=H{row_idx-2}+H{row_idx-1}"
+    for c in range(6, 9): ws.cell(row=row_idx, column=c).border = box_border
+    row_idx += 1
+
+    ws.merge_cells(f"F{row_idx}:G{row_idx}")
+    ws[f"F{row_idx}"] = "Add: CGST @ 9%"
+    ws[f"H{row_idx}"] = f"=H{row_idx-1}*0.09"
+    for c in range(6, 9): ws.cell(row=row_idx, column=c).border = box_border
+    row_idx += 1
+
+    ws.merge_cells(f"F{row_idx}:G{row_idx}")
+    ws[f"F{row_idx}"] = "Add: SGST @ 9%"
+    ws[f"H{row_idx}"] = f"=H{row_idx-2}*0.09"
+    for c in range(6, 9): ws.cell(row=row_idx, column=c).border = box_border
+    row_idx += 1
+
+    ws.merge_cells(f"F{row_idx}:G{row_idx}")
+    ws[f"F{row_idx}"] = "Grand Total"
+    ws[f"F{row_idx}"].font = bold_font
+    ws[f"F{row_idx}"].fill = header_fill
+    ws[f"H{row_idx}"] = f"=H{row_idx-3}+H{row_idx-2}+H{row_idx-1}"
+    ws[f"H{row_idx}"].font = bold_font
+    ws[f"H{row_idx}"].fill = header_fill
+    for c in range(6, 9): ws.cell(row=row_idx, column=c).border = box_border
+
+    row_idx += 2
+    # Footer
+    ws.merge_cells(f"A{row_idx}:E{row_idx+3}")
+    ws[f"A{row_idx}"] = "Bank Details :\nHDFC Bank Ltd. | A/c No.: 00082000057539\nBranch: Sree Bhumi | IFSC: HDFC0004566\nGoods once sold will not be taken back. E & O.E."
+    ws[f"A{row_idx}"].alignment = left_align
+
+    ws.merge_cells(f"F{row_idx}:H{row_idx+3}")
+    ws[f"F{row_idx}"] = "Certified that the particulars given above are true and correct.\nFor MURLI STEEL CORPORATION\n\n\nAuthorised Signatory"
+    ws[f"F{row_idx}"].alignment = right_align
+
+    return wb
+
 # -------------------------------------------------------------
 # Streamlit App UI
 # -------------------------------------------------------------
@@ -181,182 +401,199 @@ if uploaded_file is not None:
     st.write(f"**Taxable Value:** ₹{taxable_val:,.2f}")
     st.write(f"### **Grand Total:** ₹{grand_total:,.2f}")
 
-    if st.button("✅ Generate PDF", type="primary", use_container_width=True):
-        try:
-            from weasyprint import HTML
-        except Exception as e:
-            st.error("PDF generation is disabled on Windows. Please push to GitHub to use this feature on Streamlit Cloud.")
-            st.stop()
-            
-        rows_html = ""
-        for idx, itm in enumerate(edited_items, 1):
-            desc = MASTER_DESCRIPTIONS.get(itm['code'], itm['code'])
-            hsn = HSN_CODES.get(itm['code'], "721550")
-            tax_val = itm['qty'] * itm['rate']
-            rows_html += f"""
-            <tr>
-                <td>{idx}</td>
-                <td>{itm['code']}</td>
-                <td style="text-align: left; font-size: 9px;">{desc}</td>
-                <td>{hsn}</td>
-                <td>{itm.get('pcs', '')}</td>
-                <td>{itm['qty']:,.2f}</td>
-                <td style="text-align: right;">{itm['rate']:,.2f}</td>
-                <td style="text-align: right;">{tax_val:,.2f}</td>
-            </tr>
-            """
+    btn_col1, btn_col2 = st.columns(2)
+    
+    with btn_col2:
+        if st.button("📊 Generate Excel", use_container_width=True):
+            wb = create_excel(doc_type, inv_no, inv_date, selected_client_name, client_info, order_no, order_date, edited_items, del_charges)
+            excel_io = io.BytesIO()
+            wb.save(excel_io)
+            excel_io.seek(0)
+            st.download_button(
+                label="📥 Download / Share Excel",
+                data=excel_io,
+                file_name=f"{inv_no.replace('/', '_')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
 
-        full_html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-        <style>
-            @page {{ size: A4; margin: 10mm; }}
-            * {{ box-sizing: border-box; }}
-            body {{ font-family: Arial, sans-serif; font-size: 11px; margin: 0; padding: 0; color: #000; }}
-            .invoice-box {{ border: 1px solid #000; width: 100%; }}
-            .header {{ text-align: center; border-bottom: 1px solid #000; padding: 5px; }}
-            .company-name {{ font-size: 24px; font-weight: bold; color: #003399; margin: 5px 0; }}
-            .info-table {{ width: 100%; border-collapse: collapse; border-bottom: 1px solid #000; }}
-            .info-table td {{ border: 1px solid #000; padding: 4px; vertical-align: top; }}
-            .section-title {{ text-align: center; font-weight: bold; background-color: #f0f0f0; }}
-            .items-table {{ width: 100%; border-collapse: collapse; }}
-            .items-table th, .items-table td {{ border: 1px solid #000; padding: 4px; text-align: center; }}
-            .items-table th {{ background-color: #f0f0f0; font-size: 10px; }}
-            .min-height-row td {{ height: 100px; }}
-            .totals-box {{ width: 40%; float: right; border-collapse: collapse; }}
-            .totals-box td {{ border: 1px solid #000; padding: 4px; text-align: right; }}
-            .footer-table {{ width: 100%; border-collapse: collapse; border-top: 1px solid #000; }}
-            .footer-table td {{ padding: 4px; vertical-align: top; }}
-            .clear {{ clear: both; }}
-        </style>
-        </head>
-        <body>
-        <div class="invoice-box">
-            
-            <div class="header">
-                <table style="width: 100%; border: none;">
+    with btn_col1:
+        if st.button("✅ Generate PDF", type="primary", use_container_width=True):
+            try:
+                from weasyprint import HTML
+            except Exception as e:
+                st.error("PDF generation is disabled on Windows. Please push to GitHub to use this feature on Streamlit Cloud.")
+                st.stop()
+                
+            rows_html = ""
+            for idx, itm in enumerate(edited_items, 1):
+                desc = MASTER_DESCRIPTIONS.get(itm['code'], itm['code'])
+                hsn = HSN_CODES.get(itm['code'], "721550")
+                tax_val = itm['qty'] * itm['rate']
+                rows_html += f"""
+                <tr>
+                    <td>{idx}</td>
+                    <td>{itm['code']}</td>
+                    <td style="text-align: left; font-size: 9px;">{desc}</td>
+                    <td>{hsn}</td>
+                    <td>{itm.get('pcs', '')}</td>
+                    <td>{itm['qty']:,.2f}</td>
+                    <td style="text-align: right;">{itm['rate']:,.2f}</td>
+                    <td style="text-align: right;">{tax_val:,.2f}</td>
+                </tr>
+                """
+
+            full_html = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+            <style>
+                @page {{ size: A4; margin: 10mm; }}
+                * {{ box-sizing: border-box; }}
+                body {{ font-family: Arial, sans-serif; font-size: 11px; margin: 0; padding: 0; color: #000; }}
+                .invoice-box {{ border: 1px solid #000; width: 100%; }}
+                .header {{ text-align: center; border-bottom: 1px solid #000; padding: 5px; }}
+                .company-name {{ font-size: 24px; font-weight: bold; color: #003399; margin: 5px 0; }}
+                .info-table {{ width: 100%; border-collapse: collapse; border-bottom: 1px solid #000; }}
+                .info-table td {{ border: 1px solid #000; padding: 4px; vertical-align: top; }}
+                .section-title {{ text-align: center; font-weight: bold; background-color: #f0f0f0; }}
+                .items-table {{ width: 100%; border-collapse: collapse; }}
+                .items-table th, .items-table td {{ border: 1px solid #000; padding: 4px; text-align: center; }}
+                .items-table th {{ background-color: #f0f0f0; font-size: 10px; }}
+                .min-height-row td {{ height: 100px; }}
+                .totals-box {{ width: 40%; float: right; border-collapse: collapse; }}
+                .totals-box td {{ border: 1px solid #000; padding: 4px; text-align: right; }}
+                .footer-table {{ width: 100%; border-collapse: collapse; border-top: 1px solid #000; }}
+                .footer-table td {{ padding: 4px; vertical-align: top; }}
+                .clear {{ clear: both; }}
+            </style>
+            </head>
+            <body>
+            <div class="invoice-box">
+                
+                <div class="header">
+                    <table style="width: 100%; border: none;">
+                        <tr>
+                            <td style="width:33%; border: none;"></td>
+                            <td style="width:34%; text-align:center; border: none;">
+                                <span style="border: 1px solid #000; padding: 2px 10px; font-weight: bold; font-size:12px;">{doc_type}</span>
+                            </td>
+                            <td style="width:33%; text-align:right; font-size:10px; border: none;">Original for Buyer/ Seller</td>
+                        </tr>
+                    </table>
+                    <div class="company-name">MURLI STEEL CORPORATION</div>
+                    <div style="font-size:11px;">9/12, Lal Bazar Street, Mercantile Building, 'B' Block, 1st Floor, Kolkata - 700001, India</div>
+                    <div style="font-size:11px;">Phone: (033) 2210 1650 | Mobile: 9830242818 | Email: shradkakrania@gmail.com</div>
+                    <div style="font-weight:bold; font-size:12px; margin-top:5px;">PAN: AKAPK4846L | GSTIN: 19AKAPK4846L1ZS</div>
+                </div>
+
+                <table class="info-table">
                     <tr>
-                        <td style="width:33%; border: none;"></td>
-                        <td style="width:34%; text-align:center; border: none;">
-                            <span style="border: 1px solid #000; padding: 2px 10px; font-weight: bold; font-size:12px;">{doc_type}</span>
+                        <td style="width: 50%;" class="section-title">BILLED TO PARTY</td>
+                        <td style="width: 50%;" class="section-title">INVOICE DETAILS</td>
+                    </tr>
+                    <tr>
+                        <td style="padding:0;">
+                            <table style="width:100%; border-collapse:collapse;">
+                                <tr><td style="width:25%; border:none; padding:3px;">Name:</td><td style="border:none; padding:3px; font-weight:bold;">{selected_client_name}</td></tr>
+                                <tr><td style="border:none; padding:3px;">Address:</td><td style="border:none; padding:3px;">{client_info['Address']}</td></tr>
+                                <tr><td style="border:none; padding:3px;">GSTIN:</td><td style="border:none; padding:3px; font-weight:bold;">{client_info['GSTIN']}</td></tr>
+                                <tr><td style="border:none; padding:3px;">Order No.:</td><td style="border:none; padding:3px;">{order_no}</td></tr>
+                                <tr><td style="border:none; padding:3px;">Order Date:</td><td style="border:none; padding:3px;">{order_date}</td></tr>
+                                <tr><td style="border:none; padding:3px;">State:</td><td style="border:none; padding:3px;">{client_info['State']}</td></tr>
+                            </table>
                         </td>
-                        <td style="width:33%; text-align:right; font-size:10px; border: none;">Original for Buyer/ Seller</td>
+                        <td style="padding:0;">
+                            <table style="width:100%; border-collapse:collapse;">
+                                <tr><td style="width:35%; border:none; padding:3px;">Invoice No.:</td><td style="border:none; padding:3px; font-weight:bold;">{inv_no}</td></tr>
+                                <tr><td style="border:none; padding:3px;">Invoice Date:</td><td style="border:none; padding:3px; font-weight:bold;">{inv_date}</td></tr>
+                                <tr><td style="border:none; padding:3px;">Terms:</td><td style="border:none; padding:3px;">{doc_type}</td></tr>
+                                <tr><td style="border:none; padding:3px;">Supply:</td><td style="border:none; padding:3px;">West Bengal</td></tr>
+                            </table>
+                        </td>
                     </tr>
                 </table>
-                <div class="company-name">MURLI STEEL CORPORATION</div>
-                <div style="font-size:11px;">9/12, Lal Bazar Street, Mercantile Building, 'B' Block, 1st Floor, Kolkata - 700001, India</div>
-                <div style="font-size:11px;">Phone: (033) 2210 1650 | Mobile: 9830242818 | Email: shradkakrania@gmail.com</div>
-                <div style="font-weight:bold; font-size:12px; margin-top:5px;">PAN: AKAPK4846L | GSTIN: 19AKAPK4846L1ZS</div>
-            </div>
 
-            <table class="info-table">
-                <tr>
-                    <td style="width: 50%;" class="section-title">BILLED TO PARTY</td>
-                    <td style="width: 50%;" class="section-title">INVOICE DETAILS</td>
-                </tr>
-                <tr>
-                    <td style="padding:0;">
-                        <table style="width:100%; border-collapse:collapse;">
-                            <tr><td style="width:25%; border:none; padding:3px;">Name:</td><td style="border:none; padding:3px; font-weight:bold;">{selected_client_name}</td></tr>
-                            <tr><td style="border:none; padding:3px;">Address:</td><td style="border:none; padding:3px;">{client_info['Address']}</td></tr>
-                            <tr><td style="border:none; padding:3px;">GSTIN:</td><td style="border:none; padding:3px; font-weight:bold;">{client_info['GSTIN']}</td></tr>
-                            <tr><td style="border:none; padding:3px;">Order No.:</td><td style="border:none; padding:3px;">{order_no}</td></tr>
-                            <tr><td style="border:none; padding:3px;">Order Date:</td><td style="border:none; padding:3px;">{order_date}</td></tr>
-                            <tr><td style="border:none; padding:3px;">State:</td><td style="border:none; padding:3px;">{client_info['State']}</td></tr>
-                        </table>
-                    </td>
-                    <td style="padding:0;">
-                        <table style="width:100%; border-collapse:collapse;">
-                            <tr><td style="width:35%; border:none; padding:3px;">Invoice No.:</td><td style="border:none; padding:3px; font-weight:bold;">{inv_no}</td></tr>
-                            <tr><td style="border:none; padding:3px;">Invoice Date:</td><td style="border:none; padding:3px; font-weight:bold;">{inv_date}</td></tr>
-                            <tr><td style="border:none; padding:3px;">Terms:</td><td style="border:none; padding:3px;">{doc_type}</td></tr>
-                            <tr><td style="border:none; padding:3px;">Supply:</td><td style="border:none; padding:3px;">West Bengal</td></tr>
-                        </table>
-                    </td>
-                </tr>
-            </table>
-
-            <table class="info-table" style="border-top:none;">
-                <tr>
-                    <td style="width: 55%; border-top:none;">Delivery At: {client_info['Delivery']}</td>
-                    <td style="width: 20%; border-top:none;">Transport: Lorry</td>
-                    <td style="width: 25%; border-top:none;">Vehicle No. : </td>
-                </tr>
-            </table>
-
-            <table class="items-table" style="border-top:none;">
-                <tr>
-                    <th style="width: 4%;">SN</th>
-                    <th style="width: 14%;">Item Code</th>
-                    <th style="width: 38%;">Description</th>
-                    <th style="width: 8%;">HSN</th>
-                    <th style="width: 6%;">Pcs</th>
-                    <th style="width: 10%;">Qty</th>
-                    <th style="width: 8%;">Rate</th>
-                    <th style="width: 12%;">Value (INR)</th>
-                </tr>
-                {rows_html}
-                <tr class="min-height-row">
-                    <td style="border-bottom:none; border-top:none;"></td>
-                    <td style="border-bottom:none; border-top:none;"></td>
-                    <td style="border-bottom:none; border-top:none;"></td>
-                    <td style="border-bottom:none; border-top:none;"></td>
-                    <td style="border-bottom:none; border-top:none;"></td>
-                    <td style="border-bottom:none; border-top:none;"></td>
-                    <td style="border-bottom:none; border-top:none;"></td>
-                    <td style="border-bottom:none; border-top:none;"></td>
-                </tr>
-                <tr>
-                    <td colspan="4" style="text-align: right; font-weight: bold;">TOTAL:</td>
-                    <td></td>
-                    <td style="font-weight: bold;">{sum(it['qty'] for it in edited_items):,.2f}</td>
-                    <td></td>
-                    <td style="font-weight: bold; text-align: right;">{total_taxable:,.2f}</td>
-                </tr>
-            </table>
-
-            <div style="width: 100%;">
-                <div style="width: 55%; float: left; padding: 10px;">
-                    <div style="font-weight:bold;">Total Invoice Amount in Words:</div>
-                    <div style="margin-top: 5px;">{num_to_words(grand_total)}</div>
-                </div>
-                <table class="totals-box">
-                    <tr><td style="text-align: left;">Total Amount Before Tax</td><td style="width: 40%;">{total_taxable:,.2f}</td></tr>
-                    <tr><td style="text-align: left;">Delivery Charges</td><td>{del_charges:,.2f}</td></tr>
-                    <tr><td style="text-align: left;">Taxable Value</td><td>{taxable_val:,.2f}</td></tr>
-                    <tr><td style="text-align: left;">Add: CGST @ 9%</td><td>{cgst:,.2f}</td></tr>
-                    <tr><td style="text-align: left;">Add: SGST @ 9%</td><td>{sgst:,.2f}</td></tr>
-                    <tr style="background-color: #f0f0f0;"><td style="text-align: left; font-weight:bold;">Grand Total</td><td style="font-weight:bold;">{grand_total:,.2f}</td></tr>
+                <table class="info-table" style="border-top:none;">
+                    <tr>
+                        <td style="width: 55%; border-top:none;">Delivery At: {client_info['Delivery']}</td>
+                        <td style="width: 20%; border-top:none;">Transport: Lorry</td>
+                        <td style="width: 25%; border-top:none;">Vehicle No. : </td>
+                    </tr>
                 </table>
-                <div class="clear"></div>
-            </div>
 
-            <table class="footer-table">
-                <tr>
-                    <td style="width: 50%; border-right: 1px solid #000; padding: 8px;">
-                        <div style="font-weight: bold; margin-bottom: 5px;">Bank Details :</div>
-                        <div>HDFC Bank Ltd. | A/c No.: 00082000057539</div>
-                        <div>Branch: Sree Bhumi | IFSC: HDFC0004566</div>
-                        <div style="margin-top: 15px; font-size: 9px;">Goods once sold will not be taken back. E & O.E.</div>
-                    </td>
-                    <td style="width: 50%; text-align: left; padding: 8px; padding-left: 20px;">
-                        <div style="font-size: 10px;">Certified that the particulars given above are true and correct.</div>
-                        <div style="font-weight: bold; margin-top: 10px;">For MURLI STEEL CORPORATION</div>
-                        <div style="margin-top: 35px;">Authorised Signatory</div>
-                    </td>
-                </tr>
-            </table>
-        </div>
-        </body>
-        </html>
-        """
-        
-        pdf_bytes = HTML(string=full_html).write_pdf()
-        st.download_button(
-            label="📥 Download / Share PDF",
-            data=pdf_bytes,
-            file_name=f"{inv_no.replace('/', '_')}.pdf",
-            mime="application/pdf",
-            use_container_width=True
-        )
+                <table class="items-table" style="border-top:none;">
+                    <tr>
+                        <th style="width: 4%;">SN</th>
+                        <th style="width: 14%;">Item Code</th>
+                        <th style="width: 38%;">Description</th>
+                        <th style="width: 8%;">HSN</th>
+                        <th style="width: 6%;">Pcs</th>
+                        <th style="width: 10%;">Qty</th>
+                        <th style="width: 8%;">Rate</th>
+                        <th style="width: 12%;">Value (INR)</th>
+                    </tr>
+                    {rows_html}
+                    <tr class="min-height-row">
+                        <td style="border-bottom:none; border-top:none;"></td>
+                        <td style="border-bottom:none; border-top:none;"></td>
+                        <td style="border-bottom:none; border-top:none;"></td>
+                        <td style="border-bottom:none; border-top:none;"></td>
+                        <td style="border-bottom:none; border-top:none;"></td>
+                        <td style="border-bottom:none; border-top:none;"></td>
+                        <td style="border-bottom:none; border-top:none;"></td>
+                        <td style="border-bottom:none; border-top:none;"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="4" style="text-align: right; font-weight: bold;">TOTAL:</td>
+                        <td></td>
+                        <td style="font-weight: bold;">{sum(it['qty'] for it in edited_items):,.2f}</td>
+                        <td></td>
+                        <td style="font-weight: bold; text-align: right;">{total_taxable:,.2f}</td>
+                    </tr>
+                </table>
+
+                <div style="width: 100%;">
+                    <div style="width: 55%; float: left; padding: 10px;">
+                        <div style="font-weight:bold;">Total Invoice Amount in Words:</div>
+                        <div style="margin-top: 5px;">{num_to_words(grand_total)}</div>
+                    </div>
+                    <table class="totals-box">
+                        <tr><td style="text-align: left;">Total Amount Before Tax</td><td style="width: 40%;">{total_taxable:,.2f}</td></tr>
+                        <tr><td style="text-align: left;">Delivery Charges</td><td>{del_charges:,.2f}</td></tr>
+                        <tr><td style="text-align: left;">Taxable Value</td><td>{taxable_val:,.2f}</td></tr>
+                        <tr><td style="text-align: left;">Add: CGST @ 9%</td><td>{cgst:,.2f}</td></tr>
+                        <tr><td style="text-align: left;">Add: SGST @ 9%</td><td>{sgst:,.2f}</td></tr>
+                        <tr style="background-color: #f0f0f0;"><td style="text-align: left; font-weight:bold;">Grand Total</td><td style="font-weight:bold;">{grand_total:,.2f}</td></tr>
+                    </table>
+                    <div class="clear"></div>
+                </div>
+
+                <table class="footer-table">
+                    <tr>
+                        <td style="width: 50%; border-right: 1px solid #000; padding: 8px;">
+                            <div style="font-weight: bold; margin-bottom: 5px;">Bank Details :</div>
+                            <div>HDFC Bank Ltd. | A/c No.: 00082000057539</div>
+                            <div>Branch: Sree Bhumi | IFSC: HDFC0004566</div>
+                            <div style="margin-top: 15px; font-size: 9px;">Goods once sold will not be taken back. E & O.E.</div>
+                        </td>
+                        <td style="width: 50%; text-align: left; padding: 8px; padding-left: 20px;">
+                            <div style="font-size: 10px;">Certified that the particulars given above are true and correct.</div>
+                            <div style="font-weight: bold; margin-top: 10px;">For MURLI STEEL CORPORATION</div>
+                            <div style="margin-top: 35px;">Authorised Signatory</div>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+            </body>
+            </html>
+            """
+            
+            pdf_bytes = HTML(string=full_html).write_pdf()
+            st.download_button(
+                label="📥 Download / Share PDF",
+                data=pdf_bytes,
+                file_name=f"{inv_no.replace('/', '_')}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
