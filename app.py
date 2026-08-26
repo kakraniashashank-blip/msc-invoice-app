@@ -158,9 +158,13 @@ if uploaded_file is not None:
     
     st.subheader("Step 1: Check Details")
     c1, c2 = st.columns(2)
-    data["order_no"] = c1.text_input("Order No.", value=data.get("order_no", ""))
-    data["order_date"] = c2.text_input("Order Date", value=data.get("order_date", ""))
-    data["delivery_charges"] = st.number_input("Delivery Charges (₹)", value=float(data.get("delivery_charges", 0.0)))
+    order_no = c1.text_input("Order No.", value=data.get("order_no", ""))
+    order_date = c2.text_input("Order Date", value=data.get("order_date", ""))
+    del_charges = st.number_input("Delivery Charges (₹)", value=float(data.get("delivery_charges", 0.0)))
+    
+    data["order_no"] = order_no
+    data["order_date"] = order_date
+    data["delivery_charges"] = del_charges
     
     st.write("**Items List (Tap any box to adjust):**")
     
