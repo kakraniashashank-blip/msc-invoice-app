@@ -44,19 +44,16 @@ HSN_CODES = {
 
 CLIENT_DATABASE = {
     "Lagan Engineering Co. Ltd.": {
-        "Address": "14 Mohd. Ishaque Road, Kolkata - 700016",
+        "Address": "14 KYD Street, Kolkata - 700016",
         "GSTIN": "19AAACT9986F1ZP",
-        "State": "West Bengal   Code: 19"
+        "State": "West Bengal   Code: 19",
+        "Delivery": "Lagan Engineering Co. Ltd., c/o Angus Jute Mills, Bhadeshwar, W.B."
     },
-    "ABC Manufacturing": {
-        "Address": "123 Industrial Estate, Mumbai - 400001",
-        "GSTIN": "27AAACA1234Z1ZA",
-        "State": "Maharashtra   Code: 27"
-    },
-    "XYZ Traders": {
-        "Address": "45 Market Street, Delhi - 110001",
-        "GSTIN": "07AAACX9876Q1Z2",
-        "State": "Delhi   Code: 07"
+    "Birla Corporation Ltd., Unit Birla Jute Mill": {
+        "Address": "9/1 R.N. Mukherjee Road, Kolkata 700001",
+        "GSTIN": "19AABCB2075J1ZN",
+        "State": "West Bengal   Code: 19",
+        "Delivery": "Birla Jute Mill, P.O.Birlapur, 24 Parganas, West Bengal"
     }
 }
 
@@ -88,7 +85,7 @@ def num_to_words(num):
     return words + " Only"
 
 def extract_bill_details(image_file):
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    model = genai.GenerativeModel("models/gemini-1.5-flash")
     prompt = """
     Extract all billing and item details from this bill/PO into a clean JSON structure:
     {
@@ -282,7 +279,7 @@ if uploaded_file is not None:
 
             <table class="info-table" style="border-top:none;">
                 <tr>
-                    <td style="width: 55%; border-top:none;">Delivery At: {selected_client_name}, {client_info['Address']}</td>
+                    <td style="width: 55%; border-top:none;">Delivery At: {client_info['Delivery']}</td>
                     <td style="width: 20%; border-top:none;">Transport: Lorry</td>
                     <td style="width: 25%; border-top:none;">Vehicle No. : </td>
                 </tr>
