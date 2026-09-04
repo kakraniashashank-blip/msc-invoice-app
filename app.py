@@ -92,6 +92,7 @@ def extract_bill_details(image_file):
       "order_no": "P/2627/1552",
       "order_date": "07-08-2026",
       "delivery_charges": 16500,
+      "vehicle_no": "WB 23C 1234",
       "items": [
         {
           "code": "09083BL",
@@ -138,6 +139,15 @@ inv_date = st.text_input("Invoice Date", value=date.today().strftime("%d-%m-%Y")
 selected_client_name = st.selectbox("Select Client", list(CLIENT_DATABASE.keys()))
 client_info = CLIENT_DATABASE[selected_client_name]
 
+if "Lagan" in selected_client_name:
+    default_terms = "Proforma invoice"
+elif "Birla" in selected_client_name:
+    default_terms = "30 days"
+else:
+    default_terms = doc_type
+
+payment_terms = st.text_input("Payment Terms", value=default_terms)
+
 uploaded_file = st.file_uploader("📷 Snap Photo or Upload Bill", type=["jpg", "jpeg", "png", "pdf"])
 
 if uploaded_file is not None:
@@ -161,10 +171,12 @@ if uploaded_file is not None:
     order_no = c1.text_input("Order No.", value=data.get("order_no", ""))
     order_date = c2.text_input("Order Date", value=data.get("order_date", ""))
     del_charges = st.number_input("Delivery Charges (₹)", value=float(data.get("delivery_charges", 0.0)))
+    vehicle_no = st.text_input("Vehicle No.", value=data.get("vehicle_no", ""))
     
     data["order_no"] = order_no
     data["order_date"] = order_date
     data["delivery_charges"] = del_charges
+    data["vehicle_no"] = vehicle_no
     
     st.write("**Items List (Tap any box to adjust):**")
     
@@ -312,7 +324,7 @@ if uploaded_file is not None:
                         <table style="width:100%; border-collapse:collapse;">
                             <tr><td style="width:35%; border:none; padding:3px;">Invoice No.:</td><td style="border:none; padding:3px; font-weight:bold;">{inv_no}</td></tr>
                             <tr><td style="border:none; padding:3px;">Invoice Date:</td><td style="border:none; padding:3px; font-weight:bold;">{inv_date}</td></tr>
-                            <tr><td style="border:none; padding:3px;">Terms:</td><td style="border:none; padding:3px;">{doc_type}</td></tr>
+                            <tr><td style="border:none; padding:3px;">Terms:</td><td style="border:none; padding:3px;">{payment_terms}</td></tr>
                             <tr><td style="border:none; padding:3px;">Supply:</td><td style="border:none; padding:3px;">West Bengal</td></tr>
                         </table>
                     </td>
@@ -323,7 +335,7 @@ if uploaded_file is not None:
                 <tr>
                     <td style="width: 55%; border-top:none;">Delivery At: {client_info['Delivery']}</td>
                     <td style="width: 20%; border-top:none;">Transport: Lorry</td>
-                    <td style="width: 25%; border-top:none;">Vehicle No. : </td>
+                    <td style="width: 25%; border-top:none;">Vehicle No. : {vehicle_no}</td>
                 </tr>
             </table>
 
