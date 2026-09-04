@@ -166,12 +166,20 @@ if uploaded_file is not None:
     if "items" not in data:
         data["items"] = []
     
+    def safe_float(val, default=0.0):
+        if val is None:
+            return default
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return default
+
     st.subheader("Step 1: Check Details")
     c1, c2 = st.columns(2)
-    order_no = c1.text_input("Order No.", value=data.get("order_no", ""))
-    order_date = c2.text_input("Order Date", value=data.get("order_date", ""))
-    del_charges = st.number_input("Delivery Charges (₹)", value=float(data.get("delivery_charges", 0.0)))
-    vehicle_no = st.text_input("Vehicle No.", value=data.get("vehicle_no", ""))
+    order_no = c1.text_input("Order No.", value=data.get("order_no") or "")
+    order_date = c2.text_input("Order Date", value=data.get("order_date") or "")
+    del_charges = st.number_input("Delivery Charges (₹)", value=safe_float(data.get("delivery_charges", 0.0)))
+    vehicle_no = st.text_input("Vehicle No.", value=data.get("vehicle_no") or "")
     
     data["order_no"] = order_no
     data["order_date"] = order_date
@@ -184,21 +192,21 @@ if uploaded_file is not None:
     edited_items = []
     
     for i, itm in enumerate(items_list):
-        with st.expander(f"Item #{i+1} - {itm.get('code', '')}", expanded=True):
+        with st.expander(f"Item #{i+1} - {itm.get('code') or ''}", expanded=True):
             col_a, col_b = st.columns([1, 3])
-            code = col_a.text_input("Code", value=itm.get("code", ""), key=f"code_{i}")
+            code = col_a.text_input("Code", value=itm.get("code") or "", key=f"code_{i}")
             
             # Default desc mapping if empty
-            default_desc = itm.get("desc", "")
+            default_desc = itm.get("desc") or ""
             if not default_desc:
-                default_desc = MASTER_DESCRIPTIONS.get(code, code)
+                default_desc = MASTER_DESCRIPTIONS.get(code, code) or ""
                 
             desc = col_b.text_input("Description", value=default_desc, key=f"desc_{i}")
             
             col_c, col_d, col_e = st.columns(3)
-            pcs = col_c.text_input("Pcs", value=str(itm.get("pcs", "")), key=f"pcs_{i}")
-            qty = col_d.number_input("Qty (kg)", value=float(itm.get("qty", 0.0)), key=f"qty_{i}")
-            rate = col_e.number_input("Rate (₹/kg)", value=float(itm.get("rate", 0.0)), key=f"rate_{i}")
+            pcs = col_c.text_input("Pcs", value=str(itm.get("pcs") or ""), key=f"pcs_{i}")
+            qty = col_d.number_input("Qty (kg)", value=safe_float(itm.get("qty", 0.0)), key=f"qty_{i}")
+            rate = col_e.number_input("Rate (₹/kg)", value=safe_float(itm.get("rate", 0.0)), key=f"rate_{i}")
             
             # Update source of truth so edits persist
             itm["code"] = code
