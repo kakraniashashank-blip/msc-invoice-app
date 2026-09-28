@@ -129,7 +129,7 @@ def num_to_words(num):
     return words + " Only"
 
 def extract_bill_details(image_files):
-    model = genai.GenerativeModel("gemini-3.6-flash")
+    model = genai.GenerativeModel("gemini-3.5-flash-lite")
     prompt = """
     Extract all billing and item details from these bill/PO images into a clean JSON structure.
     Combine items from all images into a single 'items' array.
