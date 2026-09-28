@@ -210,7 +210,12 @@ if uploaded_file is not None:
     
     c4, c5 = st.columns(2)
     payment_terms = c4.text_input("Payment Terms", value=data.get("payment_terms", ""))
-    del_charges = c5.number_input("Delivery Charges (₹)", value=float(data.get("delivery_charges", 0.0)))
+    raw_del_charges = data.get("delivery_charges", 0.0)
+    try:
+        del_val = float(raw_del_charges) if raw_del_charges not in (None, "") else 0.0
+    except (ValueError, TypeError):
+        del_val = 0.0
+    del_charges = c5.number_input("Delivery Charges (₹)", value=del_val)
     
     data["order_no"] = order_no
     data["order_date"] = order_date
