@@ -135,6 +135,7 @@ def extract_bill_details(image_file):
     {
       "order_no": "P/2627/1552",
       "order_date": "07-08-2026",
+      "vehicle_no": "WB-02-1234",
       "delivery_charges": 16500,
       "items": [
         {
@@ -201,13 +202,16 @@ if uploaded_file is not None:
         data["items"] = []
     
     st.subheader("Step 1: Check Details")
-    c1, c2 = st.columns(2)
+    c1, c2, c3 = st.columns(3)
     order_no = c1.text_input("Order No.", value=data.get("order_no", ""))
     order_date = c2.text_input("Order Date", value=data.get("order_date", ""))
+    vehicle_no = c3.text_input("Vehicle No.", value=data.get("vehicle_no", ""))
+    
     del_charges = st.number_input("Delivery Charges (₹)", value=float(data.get("delivery_charges", 0.0)))
     
     data["order_no"] = order_no
     data["order_date"] = order_date
+    data["vehicle_no"] = vehicle_no
     data["delivery_charges"] = del_charges
     
     st.write("**Items List (Tap any box to adjust):**")
@@ -373,7 +377,7 @@ if uploaded_file is not None:
                 <tr>
                     <td style="width: 55%; border-top:none;">Delivery At: {client_info['Delivery']}</td>
                     <td style="width: 20%; border-top:none;">Transport: Lorry</td>
-                    <td style="width: 25%; border-top:none;">Vehicle No. : </td>
+                    <td style="width: 25%; border-top:none;">Vehicle No. : {vehicle_no}</td>
                 </tr>
             </table>
 
