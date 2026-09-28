@@ -129,7 +129,6 @@ def num_to_words(num):
     return words + " Only"
 
 def extract_bill_details(image_files):
-    model = genai.GenerativeModel("gemini-3.5-flash-lite")
     prompt = """
     Extract all billing and item details from these bill/PO images into a clean JSON structure.
     Combine items from all images into a single 'items' array.
@@ -168,11 +167,40 @@ def extract_bill_details(image_files):
                 mime = "image/jpeg"
                 
             payload.append({"mime_type": mime, "data": file_bytes})
-            
-        response = model.generate_content(payload, request_options={"timeout": 600})
+
+        # Fallback logic based on DRHP Analyzer v5
+        fallback_models = [
+            "gemini-3.5-flash-lite", 
+            "gemini-3.6-flash", 
+            "gemini-3.8-flash", 
+            "gemini-3.7-flash", 
+            "gemini-3.5-flash"
+        ]
         
-        clean_text = response.text.replace("```json", "").replace("```", "").strip()
-        return json.loads(clean_text)
+        last_err = None
+        for i, model_name in enumerate(fallback_models):
+            try:
+                import streamlit as st
+                model = genai.GenerativeModel(model_name)
+                response = model.generate_content(payload, request_options={"timeout": 600})
+                clean_text = response.text.replace("```json", "").replace("```", "").strip()
+                if i > 0:
+                    st.toast(f"✅ Succeeded using fallback model: {model_name}")
+                return json.loads(clean_text)
+            except Exception as e:
+                last_err = e
+                error_msg = str(e).lower()
+                # If it's a critical auth/argument error, stop immediately.
+                if "api key" in error_msg or "invalid argument" in error_msg:
+                    raise e
+                # Otherwise, it's likely a 503/429/Timeout, try next model
+                import streamlit as st
+                st.toast(f"Model {model_name} busy. Trying next...")
+                continue
+                
+        # If all models failed
+        raise last_err or Exception("All Gemini models failed due to server load.")
+        
     except Exception as e:
         import streamlit as st
         st.error(f"API Error during extraction: {str(e)}")
