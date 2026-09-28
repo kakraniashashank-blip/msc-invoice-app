@@ -128,10 +128,11 @@ def num_to_words(num):
     if paise > 0: words += f" and {two_digits(paise)} Paise"
     return words + " Only"
 
-def extract_bill_details(image_file):
+def extract_bill_details(image_files):
     model = genai.GenerativeModel("gemini-3.6-flash")
     prompt = """
-    Extract all billing and item details from this bill/PO into a clean JSON structure:
+    Extract all billing and item details from these bill/PO images into a clean JSON structure.
+    Combine items from all images into a single 'items' array.
     {
       "order_no": "P/2627/1552",
       "order_date": "07-08-2026",
@@ -151,19 +152,22 @@ def extract_bill_details(image_file):
     """
     
     try:
-        if hasattr(image_file, 'seek'):
-            image_file.seek(0)
-        file_bytes = image_file.getvalue()
-        
-        name = image_file.name.lower()
-        if name.endswith('.pdf'):
-            mime = "application/pdf"
-        elif name.endswith('.png'):
-            mime = "image/png"
-        else:
-            mime = "image/jpeg"
+        payload = [prompt]
+        for image_file in image_files:
+            if hasattr(image_file, 'seek'):
+                image_file.seek(0)
+            file_bytes = image_file.getvalue()
             
-        payload = [prompt, {"mime_type": mime, "data": file_bytes}]
+            name = image_file.name.lower()
+            if name.endswith('.pdf'):
+                mime = "application/pdf"
+            elif name.endswith('.png'):
+                mime = "image/png"
+            else:
+                mime = "image/jpeg"
+                
+            payload.append({"mime_type": mime, "data": file_bytes})
+            
         response = model.generate_content(payload)
         
         clean_text = response.text.replace("```json", "").replace("```", "").strip()
@@ -217,34 +221,31 @@ uploaded_files = st.file_uploader("📷 Snap Photos or Upload Bills", type=["jpg
 if uploaded_files:
     if st.button("🔄 Scan Images & Extract Data"):
         with st.spinner("Analyzing documents..."):
-            extracted_items = st.session_state.items_list.copy()
-            
-            for i, file in enumerate(uploaded_files):
-                extracted = extract_bill_details(file)
-                if not extracted: continue
+            extracted = extract_bill_details(uploaded_files)
+            if extracted:
+                if not st.session_state.order_no and extracted.get("order_no"):
+                    st.session_state.order_no = extracted.get("order_no")
+                if not st.session_state.order_date and extracted.get("order_date"):
+                    st.session_state.order_date = extracted.get("order_date")
+                if not st.session_state.vehicle_no and extracted.get("vehicle_no"):
+                    st.session_state.vehicle_no = extracted.get("vehicle_no")
+                if not st.session_state.payment_terms and extracted.get("payment_terms"):
+                    st.session_state.payment_terms = extracted.get("payment_terms")
                 
-                if i == 0:
-                    if not st.session_state.order_no and extracted.get("order_no"):
-                        st.session_state.order_no = extracted.get("order_no")
-                    if not st.session_state.order_date and extracted.get("order_date"):
-                        st.session_state.order_date = extracted.get("order_date")
-                    if not st.session_state.vehicle_no and extracted.get("vehicle_no"):
-                        st.session_state.vehicle_no = extracted.get("vehicle_no")
-                    if not st.session_state.payment_terms and extracted.get("payment_terms"):
-                        st.session_state.payment_terms = extracted.get("payment_terms")
-                    
-                    if st.session_state.del_charges == 0.0:
-                        raw_del = extracted.get("delivery_charges", 0.0)
-                        try:
-                            dval = float(raw_del) if raw_del not in (None, "") else 0.0
-                        except:
-                            dval = 0.0
-                        if dval != 0.0:
-                            st.session_state.del_charges = dval
-                            
-                extracted_items.extend(extracted.get("items", []))
-                
-            st.session_state.items_list = extracted_items
+                if st.session_state.del_charges == 0.0:
+                    raw_del = extracted.get("delivery_charges", 0.0)
+                    try:
+                        dval = float(raw_del) if raw_del not in (None, "") else 0.0
+                    except:
+                        dval = 0.0
+                    if dval != 0.0:
+                        st.session_state.del_charges = dval
+                        
+                # To prevent duplicates from multiple scans of the same files, we just REPLACE items
+                # if there are newly extracted items, otherwise append to be safe.
+                new_items = extracted.get("items", [])
+                if new_items:
+                    st.session_state.items_list = new_items
             st.rerun()
 
 st.subheader("Step 3: Items List")
