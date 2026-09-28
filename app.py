@@ -136,6 +136,7 @@ def extract_bill_details(image_file):
       "order_no": "P/2627/1552",
       "order_date": "07-08-2026",
       "vehicle_no": "WB-02-1234",
+      "payment_terms": "Net 30 Days",
       "delivery_charges": 16500,
       "items": [
         {
@@ -207,11 +208,14 @@ if uploaded_file is not None:
     order_date = c2.text_input("Order Date", value=data.get("order_date", ""))
     vehicle_no = c3.text_input("Vehicle No.", value=data.get("vehicle_no", ""))
     
-    del_charges = st.number_input("Delivery Charges (₹)", value=float(data.get("delivery_charges", 0.0)))
+    c4, c5 = st.columns(2)
+    payment_terms = c4.text_input("Payment Terms", value=data.get("payment_terms", ""))
+    del_charges = c5.number_input("Delivery Charges (₹)", value=float(data.get("delivery_charges", 0.0)))
     
     data["order_no"] = order_no
     data["order_date"] = order_date
     data["vehicle_no"] = vehicle_no
+    data["payment_terms"] = payment_terms
     data["delivery_charges"] = del_charges
     
     st.write("**Items List (Tap any box to adjust):**")
@@ -366,7 +370,7 @@ if uploaded_file is not None:
                         <table style="width:100%; border-collapse:collapse;">
                             <tr><td style="width:35%; border:none; padding:3px;">Invoice No.:</td><td style="border:none; padding:3px; font-weight:bold;">{inv_no}</td></tr>
                             <tr><td style="border:none; padding:3px;">Invoice Date:</td><td style="border:none; padding:3px; font-weight:bold;">{inv_date}</td></tr>
-                            <tr><td style="border:none; padding:3px;">Terms:</td><td style="border:none; padding:3px;">{doc_type}</td></tr>
+                            <tr><td style="border:none; padding:3px;">Terms:</td><td style="border:none; padding:3px;">{payment_terms}</td></tr>
                             <tr><td style="border:none; padding:3px;">Supply:</td><td style="border:none; padding:3px;">West Bengal</td></tr>
                         </table>
                     </td>
