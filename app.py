@@ -184,284 +184,289 @@ inv_date = st.text_input("Invoice Date", value=date.today().strftime("%d-%m-%Y")
 selected_client_name = st.selectbox("Select Client", list(CLIENT_DATABASE.keys()))
 client_info = CLIENT_DATABASE[selected_client_name]
 
-uploaded_file = st.file_uploader("📷 Snap Photo or Upload Bill", type=["jpg", "jpeg", "png", "pdf"])
+# Initialize global fields in session state
+if "order_no" not in st.session_state: st.session_state.order_no = ""
+if "order_date" not in st.session_state: st.session_state.order_date = ""
+if "vehicle_no" not in st.session_state: st.session_state.vehicle_no = ""
+if "payment_terms" not in st.session_state: st.session_state.payment_terms = ""
+if "del_charges" not in st.session_state: st.session_state.del_charges = 0.0
+if "items_list" not in st.session_state: st.session_state.items_list = []
 
-if uploaded_file is not None:
-    if "extracted_data" not in st.session_state or st.button("🔄 Re-Scan Image"):
-        with st.spinner("Analyzing document..."):
-            extracted = extract_bill_details(uploaded_file)
-            if not extracted:
-                st.error("Couldn't read the document clearly. Try a clearer image or manually enter details.")
-                st.session_state.extracted_data = {"items": []}
-            else:
-                if "items" not in extracted:
-                    extracted["items"] = []
-                st.session_state.extracted_data = extracted
+st.subheader("Step 1: Order & Delivery Details")
+c1, c2, c3 = st.columns(3)
+order_no = c1.text_input("Order No.", key="order_no")
+order_date = c2.text_input("Order Date", key="order_date")
+vehicle_no = c3.text_input("Vehicle No.", key="vehicle_no")
 
-    data = st.session_state.extracted_data
-    if "items" not in data:
-        data["items"] = []
-    
-    st.subheader("Step 1: Check Details")
-    c1, c2, c3 = st.columns(3)
-    order_no = c1.text_input("Order No.", value=data.get("order_no", ""))
-    order_date = c2.text_input("Order Date", value=data.get("order_date", ""))
-    vehicle_no = c3.text_input("Vehicle No.", value=data.get("vehicle_no", ""))
-    
-    c4, c5 = st.columns(2)
-    payment_terms = c4.text_input("Payment Terms", value=data.get("payment_terms", ""))
-    raw_del_charges = data.get("delivery_charges", 0.0)
-    try:
-        del_val = float(raw_del_charges) if raw_del_charges not in (None, "") else 0.0
-    except (ValueError, TypeError):
-        del_val = 0.0
-    del_charges = c5.number_input("Delivery Charges (₹)", value=del_val)
-    
-    data["order_no"] = order_no
-    data["order_date"] = order_date
-    data["vehicle_no"] = vehicle_no
-    data["payment_terms"] = payment_terms
-    data["delivery_charges"] = del_charges
-    
-    st.write("**Items List (Tap any box to adjust):**")
-    
-    items_list = data["items"]
-    edited_items = []
-    
-    for i, itm in enumerate(items_list):
-        with st.expander(f"Item #{i+1} - {itm.get('code', '')}", expanded=True):
-            col_a, col_b = st.columns([1, 3])
-            code = col_a.text_input("Code", value=itm.get("code", ""), key=f"code_{i}")
+c4, c5 = st.columns(2)
+payment_terms = c4.text_input("Payment Terms", key="payment_terms")
+del_charges = c5.number_input("Delivery Charges (₹)", key="del_charges")
+
+st.subheader("Step 2: Upload Bills (Optional)")
+uploaded_files = st.file_uploader("📷 Snap Photos or Upload Bills", type=["jpg", "jpeg", "png", "pdf"], accept_multiple_files=True)
+
+if uploaded_files:
+    if st.button("🔄 Scan Images & Extract Data"):
+        with st.spinner("Analyzing documents..."):
+            extracted_items = st.session_state.items_list.copy()
             
-            # Default desc mapping if empty or if it was previously defaulted to the code
-            default_desc = itm.get("desc", "")
-            if not default_desc or default_desc == code:
-                default_desc = MASTER_DESCRIPTIONS.get(code, code)
+            for i, file in enumerate(uploaded_files):
+                extracted = extract_bill_details(file)
+                if not extracted: continue
                 
-            desc = col_b.text_input("Description", value=default_desc, key=f"desc_{i}")
-            
-            col_h, col_c, col_d, col_e = st.columns([1, 1, 1, 1])
-            
-            # HSN Code - auto-fill from lookup, editable
-            default_hsn = itm.get("hsn", "") or HSN_CODES.get(code, "721550")
-            hsn = col_h.text_input("HSN Code", value=default_hsn, key=f"hsn_{i}")
-            
-            pcs = col_c.text_input("Pcs", value=str(itm.get("pcs", "")), key=f"pcs_{i}")
-            qty = col_d.number_input("Qty (kg)", value=float(itm.get("qty", 0.0)), key=f"qty_{i}")
-            rate = col_e.number_input("Rate (₹/kg)", value=float(itm.get("rate", 0.0)), key=f"rate_{i}")
-            
-            # Update source of truth so edits persist
-            itm["code"] = code
-            itm["desc"] = desc
-            itm["hsn"] = hsn
-            itm["pcs"] = pcs
-            itm["qty"] = qty
-            itm["rate"] = rate
-            
-            edited_items.append(itm)
-            
-            if st.button("🗑️ Delete this item", key=f"delete_{i}"):
-                items_list.pop(i)
-                st.rerun()
+                if i == 0:
+                    if not st.session_state.order_no and extracted.get("order_no"):
+                        st.session_state.order_no = extracted.get("order_no")
+                    if not st.session_state.order_date and extracted.get("order_date"):
+                        st.session_state.order_date = extracted.get("order_date")
+                    if not st.session_state.vehicle_no and extracted.get("vehicle_no"):
+                        st.session_state.vehicle_no = extracted.get("vehicle_no")
+                    if not st.session_state.payment_terms and extracted.get("payment_terms"):
+                        st.session_state.payment_terms = extracted.get("payment_terms")
+                    
+                    if st.session_state.del_charges == 0.0:
+                        raw_del = extracted.get("delivery_charges", 0.0)
+                        try:
+                            dval = float(raw_del) if raw_del not in (None, "") else 0.0
+                        except:
+                            dval = 0.0
+                        if dval != 0.0:
+                            st.session_state.del_charges = dval
+                            
+                extracted_items.extend(extracted.get("items", []))
+                
+            st.session_state.items_list = extracted_items
+            st.rerun()
 
-    if st.button("➕ Add New Item"):
-        items_list.append({
-            "code": "",
-            "desc": "",
-            "pcs": "",
-            "qty": 0.0,
-            "rate": 0.0
-        })
-        st.rerun()
+st.subheader("Step 3: Items List")
+st.write("**Items List (Tap any box to adjust):**")
 
-    # Calculations
-    del_charges = data["delivery_charges"]
-    total_taxable = sum(it["qty"] * it["rate"] for it in edited_items)
-    taxable_val = total_taxable + del_charges
-    cgst = taxable_val * 0.09
-    sgst = taxable_val * 0.09
-    grand_total = taxable_val + cgst + sgst
-    
-    st.markdown("---")
-    st.write(f"**Total Before Tax:** ₹{total_taxable:,.2f}")
-    st.write(f"**Taxable Value:** ₹{taxable_val:,.2f}")
-    st.write(f"### **Grand Total:** ₹{grand_total:,.2f}")
-
-    if st.button("✅ Generate PDF", type="primary", use_container_width=True):
-        try:
-            from weasyprint import HTML
-        except Exception as e:
-            st.error("PDF generation is disabled on Windows. Please push to GitHub to use this feature on Streamlit Cloud.")
-            st.stop()
-            
-        rows_html = ""
-        for idx, itm in enumerate(edited_items, 1):
-            hsn = itm.get('hsn', '') or HSN_CODES.get(itm['code'], "721550")
-            tax_val = itm['qty'] * itm['rate']
-            rows_html += f"""
-            <tr>
-                <td>{idx}</td>
-                <td>{itm['code']}</td>
-                <td style="text-align: left; font-size: 9px;">{itm['desc']}</td>
-                <td>{hsn}</td>
-                <td>{itm.get('pcs', '')}</td>
-                <td>{itm['qty']:,.2f}</td>
-                <td style="text-align: right;">{itm['rate']:,.2f}</td>
-                <td style="text-align: right;">{tax_val:,.2f}</td>
-            </tr>
-            """
-
-        full_html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-        <style>
-            @page {{ size: A4; margin: 10mm; }}
-            * {{ box-sizing: border-box; }}
-            body {{ font-family: Arial, sans-serif; font-size: 11px; margin: 0; padding: 0; color: #000; }}
-            .invoice-box {{ border: 1px solid #000; width: 100%; }}
-            .header {{ text-align: center; border-bottom: 1px solid #000; padding: 5px; }}
-            .company-name {{ font-size: 24px; font-weight: bold; color: #003399; margin: 5px 0; }}
-            .info-table {{ width: 100%; border-collapse: collapse; border-bottom: 1px solid #000; }}
-            .info-table td {{ border: 1px solid #000; padding: 4px; vertical-align: top; }}
-            .section-title {{ text-align: center; font-weight: bold; background-color: #f0f0f0; }}
-            .items-table {{ width: 100%; border-collapse: collapse; }}
-            .items-table th, .items-table td {{ border: 1px solid #000; padding: 4px; text-align: center; }}
-            .items-table th {{ background-color: #f0f0f0; font-size: 10px; }}
-            .min-height-row td {{ height: 100px; }}
-            .totals-box {{ width: 40%; float: right; border-collapse: collapse; }}
-            .totals-box td {{ border: 1px solid #000; padding: 4px; text-align: right; }}
-            .footer-table {{ width: 100%; border-collapse: collapse; border-top: 1px solid #000; }}
-            .footer-table td {{ padding: 4px; vertical-align: top; }}
-            .clear {{ clear: both; }}
-        </style>
-        </head>
-        <body>
-        <div class="invoice-box">
-            
-            <div class="header">
-                <table style="width: 100%; border: none;">
-                    <tr>
-                        <td style="width:33%; border: none;"></td>
-                        <td style="width:34%; text-align:center; border: none;">
-                            <span style="border: 1px solid #000; padding: 2px 10px; font-weight: bold; font-size:12px;">{doc_type}</span>
-                        </td>
-                        <td style="width:33%; text-align:right; font-size:10px; border: none;">Original for Buyer/ Seller</td>
-                    </tr>
-                </table>
-                <div class="company-name">MURLI STEEL CORPORATION</div>
-                <div style="font-size:11px;">9/12, Lal Bazar Street, Mercantile Building, 'B' Block, 1st Floor, Kolkata - 700001, India</div>
-                <div style="font-size:11px;">Phone: (033) 2210 1650 | Mobile: 9830242818 | Email: shradkakrania@gmail.com</div>
-                <div style="font-weight:bold; font-size:12px; margin-top:5px;">PAN: AKAPK4846L | GSTIN: 19AKAPK4846L1ZS</div>
-            </div>
-
-            <table class="info-table">
-                <tr>
-                    <td style="width: 50%;" class="section-title">BILLED TO PARTY</td>
-                    <td style="width: 50%;" class="section-title">INVOICE DETAILS</td>
-                </tr>
-                <tr>
-                    <td style="padding:0;">
-                        <table style="width:100%; border-collapse:collapse;">
-                            <tr><td style="width:25%; border:none; padding:3px;">Name:</td><td style="border:none; padding:3px; font-weight:bold;">{selected_client_name}</td></tr>
-                            <tr><td style="border:none; padding:3px;">Address:</td><td style="border:none; padding:3px;">{client_info['Address']}</td></tr>
-                            <tr><td style="border:none; padding:3px;">GSTIN:</td><td style="border:none; padding:3px; font-weight:bold;">{client_info['GSTIN']}</td></tr>
-                            <tr><td style="border:none; padding:3px;">Order No.:</td><td style="border:none; padding:3px;">{order_no}</td></tr>
-                            <tr><td style="border:none; padding:3px;">Order Date:</td><td style="border:none; padding:3px;">{order_date}</td></tr>
-                            <tr><td style="border:none; padding:3px;">State:</td><td style="border:none; padding:3px;">{client_info['State']}</td></tr>
-                        </table>
-                    </td>
-                    <td style="padding:0;">
-                        <table style="width:100%; border-collapse:collapse;">
-                            <tr><td style="width:35%; border:none; padding:3px;">Invoice No.:</td><td style="border:none; padding:3px; font-weight:bold;">{inv_no}</td></tr>
-                            <tr><td style="border:none; padding:3px;">Invoice Date:</td><td style="border:none; padding:3px; font-weight:bold;">{inv_date}</td></tr>
-                            <tr><td style="border:none; padding:3px;">Terms:</td><td style="border:none; padding:3px;">{payment_terms if payment_terms else doc_type}</td></tr>
-                            <tr><td style="border:none; padding:3px;">Supply:</td><td style="border:none; padding:3px;">West Bengal</td></tr>
-                        </table>
-                    </td>
-                </tr>
-            </table>
-
-            <table class="info-table" style="border-top:none;">
-                <tr>
-                    <td style="width: 55%; border-top:none;">Delivery At: {client_info['Delivery']}</td>
-                    <td style="width: 20%; border-top:none;">Transport: Lorry</td>
-                    <td style="width: 25%; border-top:none;">Vehicle No. : {vehicle_no}</td>
-                </tr>
-            </table>
-
-            <table class="items-table" style="border-top:none;">
-                <tr>
-                    <th style="width: 4%;">SN</th>
-                    <th style="width: 14%;">Item Code</th>
-                    <th style="width: 38%;">Description</th>
-                    <th style="width: 8%;">HSN</th>
-                    <th style="width: 6%;">Pcs</th>
-                    <th style="width: 10%;">Qty</th>
-                    <th style="width: 8%;">Rate</th>
-                    <th style="width: 12%;">Value (INR)</th>
-                </tr>
-                {rows_html}
-                <tr class="min-height-row">
-                    <td style="border-bottom:none; border-top:none;"></td>
-                    <td style="border-bottom:none; border-top:none;"></td>
-                    <td style="border-bottom:none; border-top:none;"></td>
-                    <td style="border-bottom:none; border-top:none;"></td>
-                    <td style="border-bottom:none; border-top:none;"></td>
-                    <td style="border-bottom:none; border-top:none;"></td>
-                    <td style="border-bottom:none; border-top:none;"></td>
-                    <td style="border-bottom:none; border-top:none;"></td>
-                </tr>
-                <tr>
-                    <td colspan="4" style="text-align: right; font-weight: bold;">TOTAL:</td>
-                    <td></td>
-                    <td style="font-weight: bold;">{sum(it['qty'] for it in edited_items):,.2f}</td>
-                    <td></td>
-                    <td style="font-weight: bold; text-align: right;">{total_taxable:,.2f}</td>
-                </tr>
-            </table>
-
-            <div style="width: 100%;">
-                <div style="width: 55%; float: left; padding: 10px;">
-                    <div style="font-weight:bold;">Total Invoice Amount in Words:</div>
-                    <div style="margin-top: 5px;">{num_to_words(grand_total)}</div>
-                </div>
-                <table class="totals-box">
-                    <tr><td style="text-align: left;">Total Amount Before Tax</td><td style="width: 40%;">{total_taxable:,.2f}</td></tr>
-                    <tr><td style="text-align: left;">Delivery Charges</td><td>{del_charges:,.2f}</td></tr>
-                    <tr><td style="text-align: left;">Taxable Value</td><td>{taxable_val:,.2f}</td></tr>
-                    <tr><td style="text-align: left;">Add: CGST @ 9%</td><td>{cgst:,.2f}</td></tr>
-                    <tr><td style="text-align: left;">Add: SGST @ 9%</td><td>{sgst:,.2f}</td></tr>
-                    <tr style="background-color: #f0f0f0;"><td style="text-align: left; font-weight:bold;">Grand Total</td><td style="font-weight:bold;">{grand_total:,.2f}</td></tr>
-                </table>
-                <div class="clear"></div>
-            </div>
-
-            <table class="footer-table">
-                <tr>
-                    <td style="width: 50%; border-right: 1px solid #000; padding: 8px;">
-                        <div style="font-weight: bold; margin-bottom: 5px;">Bank Details :</div>
-                        <div>HDFC Bank Ltd. | A/c No.: 00082000057539</div>
-                        <div>Branch: Sree Bhumi | IFSC: HDFC0004566</div>
-                        <div style="margin-top: 15px; font-size: 9px;">Goods once sold will not be taken back. E & O.E.</div>
-                    </td>
-                    <td style="width: 50%; text-align: left; padding: 8px; padding-left: 20px;">
-                        <div style="font-size: 10px;">Certified that the particulars given above are true and correct.</div>
-                        <div style="font-weight: bold; margin-top: 10px;">For MURLI STEEL CORPORATION</div>
-                        <div style="margin-top: 35px;">Authorised Signatory</div>
-                    </td>
-                </tr>
-            </table>
-        </div>
-        </body>
-        </html>
-        """
+edited_items = []
+for i, itm in enumerate(st.session_state.items_list):
+    with st.expander(f"Item #{i+1} - {itm.get('code', '')}", expanded=True):
+        col_a, col_b = st.columns([1, 3])
+        code = col_a.text_input("Code", value=itm.get("code", ""), key=f"code_{i}")
         
-        pdf_bytes = HTML(string=full_html).write_pdf()
-        st.download_button(
-            label="📥 Download / Share PDF",
-            data=pdf_bytes,
-            file_name=f"{inv_no.replace('/', '_')}.pdf",
-            mime="application/pdf",
-            use_container_width=True
-        )
+        default_desc = itm.get("desc", "")
+        if not default_desc or default_desc == code:
+            default_desc = MASTER_DESCRIPTIONS.get(code, code)
+            
+        desc = col_b.text_input("Description", value=default_desc, key=f"desc_{i}")
+        
+        col_h, col_c, col_d, col_e = st.columns([1, 1, 1, 1])
+        default_hsn = itm.get("hsn", "") or HSN_CODES.get(code, "721550")
+        hsn = col_h.text_input("HSN Code", value=default_hsn, key=f"hsn_{i}")
+        
+        pcs = col_c.text_input("Pcs", value=str(itm.get("pcs", "")), key=f"pcs_{i}")
+        qty = col_d.number_input("Qty (kg)", value=float(itm.get("qty", 0.0)), key=f"qty_{i}")
+        rate = col_e.number_input("Rate (₹/kg)", value=float(itm.get("rate", 0.0)), key=f"rate_{i}")
+        
+        itm["code"] = code
+        itm["desc"] = desc
+        itm["hsn"] = hsn
+        itm["pcs"] = pcs
+        itm["qty"] = qty
+        itm["rate"] = rate
+        
+        edited_items.append(itm)
+        
+        if st.button("🗑️ Delete this item", key=f"delete_{i}"):
+            st.session_state.items_list.pop(i)
+            st.rerun()
+
+if st.button("➕ Add New Item"):
+    st.session_state.items_list.append({
+        "code": "", "desc": "", "pcs": "", "qty": 0.0, "rate": 0.0
+    })
+    st.rerun()
+
+# Calculations
+total_taxable = sum(it["qty"] * it["rate"] for it in edited_items)
+taxable_val = total_taxable + del_charges
+cgst = taxable_val * 0.09
+sgst = taxable_val * 0.09
+grand_total = taxable_val + cgst + sgst
+
+st.markdown("---")
+st.write(f"**Total Before Tax:** ₹{total_taxable:,.2f}")
+st.write(f"**Taxable Value:** ₹{taxable_val:,.2f}")
+st.write(f"### **Grand Total:** ₹{grand_total:,.2f}")
+
+if st.button("✅ Generate PDF", type="primary", use_container_width=True):
+    try:
+        from weasyprint import HTML
+    except Exception as e:
+        st.error("PDF generation is disabled on Windows. Please push to GitHub to use this feature on Streamlit Cloud.")
+        st.stop()
+        
+    rows_html = ""
+    for idx, itm in enumerate(edited_items, 1):
+        hsn = itm.get('hsn', '') or HSN_CODES.get(itm['code'], "721550")
+        tax_val = itm['qty'] * itm['rate']
+        rows_html += f"""
+        <tr>
+            <td>{idx}</td>
+            <td>{itm['code']}</td>
+            <td style="text-align: left; font-size: 9px;">{itm['desc']}</td>
+            <td>{hsn}</td>
+            <td>{itm.get('pcs', '')}</td>
+            <td>{itm['qty']:,.2f}</td>
+            <td style="text-align: right;">{itm['rate']:,.2f}</td>
+            <td style="text-align: right;">{tax_val:,.2f}</td>
+        </tr>
+        """
+
+    full_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <style>
+        @page {{ size: A4; margin: 10mm; }}
+        * {{ box-sizing: border-box; }}
+        body {{ font-family: Arial, sans-serif; font-size: 11px; margin: 0; padding: 0; color: #000; }}
+        .invoice-box {{ border: 1px solid #000; width: 100%; }}
+        .header {{ text-align: center; border-bottom: 1px solid #000; padding: 5px; }}
+        .company-name {{ font-size: 24px; font-weight: bold; color: #003399; margin: 5px 0; }}
+        .info-table {{ width: 100%; border-collapse: collapse; border-bottom: 1px solid #000; }}
+        .info-table td {{ border: 1px solid #000; padding: 4px; vertical-align: top; }}
+        .section-title {{ text-align: center; font-weight: bold; background-color: #f0f0f0; }}
+        .items-table {{ width: 100%; border-collapse: collapse; }}
+        .items-table th, .items-table td {{ border: 1px solid #000; padding: 4px; text-align: center; }}
+        .items-table th {{ background-color: #f0f0f0; font-size: 10px; }}
+        .min-height-row td {{ height: 100px; }}
+        .totals-box {{ width: 40%; float: right; border-collapse: collapse; }}
+        .totals-box td {{ border: 1px solid #000; padding: 4px; text-align: right; }}
+        .footer-table {{ width: 100%; border-collapse: collapse; border-top: 1px solid #000; }}
+        .footer-table td {{ padding: 4px; vertical-align: top; }}
+        .clear {{ clear: both; }}
+    </style>
+    </head>
+    <body>
+    <div class="invoice-box">
+        
+        <div class="header">
+            <table style="width: 100%; border: none;">
+                <tr>
+                    <td style="width:33%; border: none;"></td>
+                    <td style="width:34%; text-align:center; border: none;">
+                        <span style="border: 1px solid #000; padding: 2px 10px; font-weight: bold; font-size:12px;">{doc_type}</span>
+                    </td>
+                    <td style="width:33%; text-align:right; font-size:10px; border: none;">Original for Buyer/ Seller</td>
+                </tr>
+            </table>
+            <div class="company-name">MURLI STEEL CORPORATION</div>
+            <div style="font-size:11px;">9/12, Lal Bazar Street, Mercantile Building, 'B' Block, 1st Floor, Kolkata - 700001, India</div>
+            <div style="font-size:11px;">Phone: (033) 2210 1650 | Mobile: 9830242818 | Email: shradkakrania@gmail.com</div>
+            <div style="font-weight:bold; font-size:12px; margin-top:5px;">PAN: AKAPK4846L | GSTIN: 19AKAPK4846L1ZS</div>
+        </div>
+
+        <table class="info-table">
+            <tr>
+                <td style="width: 50%;" class="section-title">BILLED TO PARTY</td>
+                <td style="width: 50%;" class="section-title">INVOICE DETAILS</td>
+            </tr>
+            <tr>
+                <td style="padding:0;">
+                    <table style="width:100%; border-collapse:collapse;">
+                        <tr><td style="width:25%; border:none; padding:3px;">Name:</td><td style="border:none; padding:3px; font-weight:bold;">{selected_client_name}</td></tr>
+                        <tr><td style="border:none; padding:3px;">Address:</td><td style="border:none; padding:3px;">{client_info['Address']}</td></tr>
+                        <tr><td style="border:none; padding:3px;">GSTIN:</td><td style="border:none; padding:3px; font-weight:bold;">{client_info['GSTIN']}</td></tr>
+                        <tr><td style="border:none; padding:3px;">Order No.:</td><td style="border:none; padding:3px;">{order_no}</td></tr>
+                        <tr><td style="border:none; padding:3px;">Order Date:</td><td style="border:none; padding:3px;">{order_date}</td></tr>
+                        <tr><td style="border:none; padding:3px;">State:</td><td style="border:none; padding:3px;">{client_info['State']}</td></tr>
+                    </table>
+                </td>
+                <td style="padding:0;">
+                    <table style="width:100%; border-collapse:collapse;">
+                        <tr><td style="width:35%; border:none; padding:3px;">Invoice No.:</td><td style="border:none; padding:3px; font-weight:bold;">{inv_no}</td></tr>
+                        <tr><td style="border:none; padding:3px;">Invoice Date:</td><td style="border:none; padding:3px; font-weight:bold;">{inv_date}</td></tr>
+                        <tr><td style="border:none; padding:3px;">Terms:</td><td style="border:none; padding:3px;">{payment_terms if payment_terms else doc_type}</td></tr>
+                        <tr><td style="border:none; padding:3px;">Supply:</td><td style="border:none; padding:3px;">West Bengal</td></tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+
+        <table class="info-table" style="border-top:none;">
+            <tr>
+                <td style="width: 55%; border-top:none;">Delivery At: {client_info['Delivery']}</td>
+                <td style="width: 20%; border-top:none;">Transport: Lorry</td>
+                <td style="width: 25%; border-top:none;">Vehicle No. : {vehicle_no}</td>
+            </tr>
+        </table>
+
+        <table class="items-table" style="border-top:none;">
+            <tr>
+                <th style="width: 4%;">SN</th>
+                <th style="width: 14%;">Item Code</th>
+                <th style="width: 38%;">Description</th>
+                <th style="width: 8%;">HSN</th>
+                <th style="width: 6%;">Pcs</th>
+                <th style="width: 10%;">Qty</th>
+                <th style="width: 8%;">Rate</th>
+                <th style="width: 12%;">Value (INR)</th>
+            </tr>
+            {rows_html}
+            <tr class="min-height-row">
+                <td style="border-bottom:none; border-top:none;"></td>
+                <td style="border-bottom:none; border-top:none;"></td>
+                <td style="border-bottom:none; border-top:none;"></td>
+                <td style="border-bottom:none; border-top:none;"></td>
+                <td style="border-bottom:none; border-top:none;"></td>
+                <td style="border-bottom:none; border-top:none;"></td>
+                <td style="border-bottom:none; border-top:none;"></td>
+                <td style="border-bottom:none; border-top:none;"></td>
+            </tr>
+            <tr>
+                <td colspan="4" style="text-align: right; font-weight: bold;">TOTAL:</td>
+                <td></td>
+                <td style="font-weight: bold;">{sum(it['qty'] for it in edited_items):,.2f}</td>
+                <td></td>
+                <td style="font-weight: bold; text-align: right;">{total_taxable:,.2f}</td>
+            </tr>
+        </table>
+
+        <div style="width: 100%;">
+            <div style="width: 55%; float: left; padding: 10px;">
+                <div style="font-weight:bold;">Total Invoice Amount in Words:</div>
+                <div style="margin-top: 5px;">{num_to_words(grand_total)}</div>
+            </div>
+            <table class="totals-box">
+                <tr><td style="text-align: left;">Total Amount Before Tax</td><td style="width: 40%;">{total_taxable:,.2f}</td></tr>
+                <tr><td style="text-align: left;">Delivery Charges</td><td>{del_charges:,.2f}</td></tr>
+                <tr><td style="text-align: left;">Taxable Value</td><td>{taxable_val:,.2f}</td></tr>
+                <tr><td style="text-align: left;">Add: CGST @ 9%</td><td>{cgst:,.2f}</td></tr>
+                <tr><td style="text-align: left;">Add: SGST @ 9%</td><td>{sgst:,.2f}</td></tr>
+                <tr style="background-color: #f0f0f0;"><td style="text-align: left; font-weight:bold;">Grand Total</td><td style="font-weight:bold;">{grand_total:,.2f}</td></tr>
+            </table>
+            <div class="clear"></div>
+        </div>
+
+        <table class="footer-table">
+            <tr>
+                <td style="width: 50%; border-right: 1px solid #000; padding: 8px;">
+                    <div style="font-weight: bold; margin-bottom: 5px;">Bank Details :</div>
+                    <div>HDFC Bank Ltd. | A/c No.: 00082000057539</div>
+                    <div>Branch: Sree Bhumi | IFSC: HDFC0004566</div>
+                    <div style="margin-top: 15px; font-size: 9px;">Goods once sold will not be taken back. E & O.E.</div>
+                </td>
+                <td style="width: 50%; text-align: left; padding: 8px; padding-left: 20px;">
+                    <div style="font-size: 10px;">Certified that the particulars given above are true and correct.</div>
+                    <div style="font-weight: bold; margin-top: 10px;">For MURLI STEEL CORPORATION</div>
+                    <div style="margin-top: 35px;">Authorised Signatory</div>
+                </td>
+            </tr>
+        </table>
+    </div>
+    </body>
+    </html>
+    """
+    
+    pdf_bytes = HTML(string=full_html).write_pdf()
+    st.download_button(
+        label="📥 Download / Share PDF",
+        data=pdf_bytes,
+        file_name=f"{inv_no.replace('/', '_')}.pdf",
+        mime="application/pdf",
+        use_container_width=True
+    )
