@@ -149,6 +149,7 @@ def extract_bill_details(image_files):
       ]
     }
     Extract handwritten overrides if present. Return ONLY valid JSON.
+    For 'vehicle_no', also check 'Lorry No' or 'Transport No'. If any field is missing, use null or 0.
     """
     
     try:
@@ -168,7 +169,7 @@ def extract_bill_details(image_files):
                 
             payload.append({"mime_type": mime, "data": file_bytes})
             
-        response = model.generate_content(payload)
+        response = model.generate_content(payload, request_options={"timeout": 600})
         
         clean_text = response.text.replace("```json", "").replace("```", "").strip()
         return json.loads(clean_text)
@@ -241,11 +242,10 @@ if uploaded_files:
                     if dval != 0.0:
                         st.session_state.del_charges = dval
                         
-                # To prevent duplicates from multiple scans of the same files, we just REPLACE items
-                # if there are newly extracted items, otherwise append to be safe.
+                # Append newly extracted items to the list so users can scan page by page
                 new_items = extracted.get("items", [])
                 if new_items:
-                    st.session_state.items_list = new_items
+                    st.session_state.items_list.extend(new_items)
             st.rerun()
 
 st.subheader("Step 3: Items List")
