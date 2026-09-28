@@ -19,29 +19,71 @@ else:
 
 # Master item descriptions lookup
 MASTER_DESCRIPTIONS = {
-    "09083BL": 'BRIGHT M.S. 1.31/32" (50MM) DIA. TOLERANCE -0.001"/-0.004" (En3B-BS970:1955)',
+    "09112BL": 'BRIGHT M.S. 1.3/4" DIA. TOLERANCE ON DIA. -0.002"/-0.005". LENGTH: 19-20 FEET (En3B-BS970:1955)',
     "09118BL": 'BRIGHT M.S. 1/2" DIA. TOLERANCE ON DIA. -0.001"/-0.003". LENGTH: 18-20 FEET (En3B-BS970:1955)',
     "09119BL": 'BRIGHT M.S. 5/8" DIA. TOLERANCE ON DIA. -0.001"/-0.003". LENGTH: 18-20 FEET (En3B-BS970:1955)',
     "09304BL": 'BRIGHT M.S. 7/8" DIA. TOLERANCE ON DIA. -0.001"/-0.003". LENGTH: 11-15 FEET (En3B-BS970:1955)',
-    "09112BL": 'BRIGHT M.S. 1.3/4" DIA. TOLERANCE ON DIA.',
-    "09375BL": 'BRIGHT M.S. G.B. 1.3/4" DIA. TOLERANCE ON DIA.',
+    "09336BL": 'BRIGHT M.S. FLAT 1" X 1/2" (25X12MM)',
     "09113BL": 'BRIGHT M.S. 2" DIA. TOLERANCE ON DIA. +0.005"/+0.008". LENGTH: 18.5 FEET (En3B-BS970:1955)',
     "09114BL": 'BRIGHT M.S. 2.1/4" DIA. TOLERANCE ON DIA. +0.005"/+0.008". LENGTH: 18.5 FEET (En3B-BS970:1955)',
     "09283BL": 'BRIGHT M.S. 1.1/2" DIA. TOLERANCE ON DIA. -0.002"/-0.005". LENGTH: 18-20 FEET (En3B-BS970:1955)',
     "09822BL": 'BRIGHT CK45 STEEL - 2.1/4" DIA. GB TOL ON OD +0.014"/+0.018", HARDNESS 204 TO 249 BHN',
+    "09850BL": '2.204" DIA. BRIGHT MS BAR - DIA. TOLERANCE +0.005"/+0.008" (En3B-BS970:1955)',
+    "09831BL": 'BRIGHT MS 3" DIA. TOLERANCE +000/-0.004". LENGTH: 8 TO 10 FEET (En3B-BS970:1955)',
     "09158BL": 'BRIGHT M.S. GB 45MM DIA. TOLERANCE ON DIA.',
     "09110BL": 'BRIGHT M.S. 1" DIA. TOLERANCE -0.005"/-0.008". LENGTH: 8-12 FT (En3B-BS970:1955)',
     "09111BL": 'BRIGHT MS 1.1/4" DIA. TOLERANCE -0.002"/-0.005". LENGTH: 20-21 FEET (En3B-BS970:1955)',
     "09337BL": 'BRIGHT M.S. 3/4" DIA. TOLERANCE -0.001"/-0.003". LENGTH: 8-12 FT (En3B-BS970:1955)',
-    "09828BL": 'BRIGHT CK-45, 1.5/8" GB+',
+    "09375BL": 'BRIGHT M.S. GB 1.3/4" DIA. TOLERANCE +0.008"/+0.012". LENGTH: 19-20 FEET (En3B-BS970:1955)',
+    "09376BL": 'BRIGHT M.S. 1.1/8" DIA. TOLERANCE -0.002"/-0.005". LENGTH: 18-20 FEET (En3B-BS970:1955)',
+    "09828BL": 'BRIGHT CK45 - 1.5/8" DIA. GB(SPECIAL), TOL ON O/D +0.004"/+0.006", HARDNESS 204-249BHN',
+    "09083BL": 'BRIGHT M.S. 1.31/32" (50MM) DIA. TOLERANCE -0.001"/-0.004" (En3B-BS970:1955)',
     "09816BL": '1.3/8" DIA BRIGHT CLASS IV STEEL (G.B) TOL ON DIA +0.008"/+0.012"',
+    "09823BL": 'BRIGHT CK45 STEEL - 2.1/2" DIA. GB TOL ON O/D +0.014"/+0.018"',
+    "09332BL": 'BRIGHT M.S. GB 5/8" DIA. TOLERANCE +0.008"/+0.012"',
+    "09307BL": '0.820" A/F HEXAGONAL BR. MS BAR (En3B-BS970:1955)',
+    "09394BL": 'BLACK M.S. FLAT 40 X 12 MM',
+    "09428BL": 'BLACK M.S. FLAT 50 X 12 MM',
     "09246BL": 'M.S. CHANNEL 3" X 1.1/2" (75X40MM), LENGTH: 20-22 FT',
-    "09256BL": 'M.S. CHANNEL 4" X 2" (100X50MM)',
-    "09427BL": 'M.S. ANGLE 3" X 3" X 1/4" (75X75X6 MM)'
+    "09256BL": 'M.S. CHANNEL 4" X 2" (100X50MM), LENGTH: 18 FT',
+    "09427BL": 'M.S. ANGLE 3" X 3" X 1/4" (75X75X6 MM), LENGTH: 18-20 FT',
+    "09437BL": 'BLACK M.S. ROUND 100 MM DIA - HARDNESS 150 TO 180 BHN (En3B-BS970:1955)',
+    "09380BL": 'BLACK M.S. 125 MM DIA - HARDNESS 150 TO 180 BHN (En3B-BS970:1955)',
+    "09442BL": 'EN31 FLAT 40 X 25 MM',
+    "09451BL": 'EN31 FLAT 40 X 20 MM',
+    "09423BL": 'SEAMLESS STEEL TUBE 1.15/16" X 1.1/2"',
+    "105MM_EN8": '105MM CARBON STEEL En-8 ROUND',
+    "09516BL": '85MM DIA. EN-8 ROUND',
+    "09517BL": '75MM DIA. EN-8 ROUND',
+    "61131BL": '70MM DIA. EN-8 ROUND',
+    "09520BL": '65MM EN8 ROUND BAR',
+    "09330BL": 'DIA 130 MM EN-24 BLACK ROUND BAR',
+    "09329BL": 'DIA 110 MM EN-24 BLACK ROUND BAR',
+    "09326BL": 'DIA 90 MM EN-24 BLACK ROUND BAR',
+    "12050038": 'G.I. FLAT 50 X 6mm',
+    "12050041": 'G.I. FLAT 25 X 3mm',
+    "12050059": 'G.I. FLAT 19 X 3mm',
+    "12050040": 'G.I. FLAT 25 X 6mm'
 }
 
 HSN_CODES = {
-    "09246BL": "721610", "09256BL": "721610", "09427BL": "721610"
+    "09246BL": "721610", 
+    "09256BL": "721610", 
+    "09427BL": "721610",
+    "09442BL": "722860",
+    "09451BL": "722860",
+    "105MM_EN8": "721410",
+    "09516BL": "721410",
+    "09517BL": "721410",
+    "61131BL": "721410",
+    "09520BL": "721410",
+    "09330BL": "722830",
+    "09329BL": "722830",
+    "09326BL": "722830",
+    "12050038": "72123010",
+    "12050041": "72123010",
+    "12050059": "72123010",
+    "12050040": "72123010"
 }
 
 CLIENT_DATABASE = {
@@ -94,7 +136,6 @@ def extract_bill_details(image_file):
       "order_no": "P/2627/1552",
       "order_date": "07-08-2026",
       "delivery_charges": 16500,
-      "vehicle_no": "WB 23C 1234",
       "items": [
         {
           "code": "09083BL",
@@ -141,15 +182,6 @@ inv_date = st.text_input("Invoice Date", value=date.today().strftime("%d-%m-%Y")
 selected_client_name = st.selectbox("Select Client", list(CLIENT_DATABASE.keys()))
 client_info = CLIENT_DATABASE[selected_client_name]
 
-if "Lagan" in selected_client_name:
-    default_terms = "Proforma invoice"
-elif "Birla" in selected_client_name:
-    default_terms = "30 days"
-else:
-    default_terms = doc_type
-
-payment_terms = st.text_input("Payment Terms", value=default_terms)
-
 uploaded_file = st.file_uploader("📷 Snap Photo or Upload Bill", type=["jpg", "jpeg", "png", "pdf"])
 
 if uploaded_file is not None:
@@ -168,25 +200,15 @@ if uploaded_file is not None:
     if "items" not in data:
         data["items"] = []
     
-    def safe_float(val, default=0.0):
-        if val is None:
-            return default
-        try:
-            return float(val)
-        except (ValueError, TypeError):
-            return default
-
     st.subheader("Step 1: Check Details")
     c1, c2 = st.columns(2)
-    order_no = c1.text_input("Order No.", value=data.get("order_no") or "")
-    order_date = c2.text_input("Order Date", value=data.get("order_date") or "")
-    del_charges = st.number_input("Delivery Charges (₹)", value=safe_float(data.get("delivery_charges", 0.0)))
-    vehicle_no = st.text_input("Vehicle No.", value=data.get("vehicle_no") or "")
+    order_no = c1.text_input("Order No.", value=data.get("order_no", ""))
+    order_date = c2.text_input("Order Date", value=data.get("order_date", ""))
+    del_charges = st.number_input("Delivery Charges (₹)", value=float(data.get("delivery_charges", 0.0)))
     
     data["order_no"] = order_no
     data["order_date"] = order_date
     data["delivery_charges"] = del_charges
-    data["vehicle_no"] = vehicle_no
     
     st.write("**Items List (Tap any box to adjust):**")
     
@@ -194,25 +216,31 @@ if uploaded_file is not None:
     edited_items = []
     
     for i, itm in enumerate(items_list):
-        with st.expander(f"Item #{i+1} - {itm.get('code') or ''}", expanded=True):
+        with st.expander(f"Item #{i+1} - {itm.get('code', '')}", expanded=True):
             col_a, col_b = st.columns([1, 3])
-            code = col_a.text_input("Code", value=itm.get("code") or "", key=f"code_{i}")
+            code = col_a.text_input("Code", value=itm.get("code", ""), key=f"code_{i}")
             
-            # Default desc mapping if empty
-            default_desc = itm.get("desc") or ""
-            if not default_desc:
-                default_desc = MASTER_DESCRIPTIONS.get(code, code) or ""
+            # Default desc mapping if empty or if it was previously defaulted to the code
+            default_desc = itm.get("desc", "")
+            if not default_desc or default_desc == code:
+                default_desc = MASTER_DESCRIPTIONS.get(code, code)
                 
             desc = col_b.text_input("Description", value=default_desc, key=f"desc_{i}")
             
-            col_c, col_d, col_e = st.columns(3)
-            pcs = col_c.text_input("Pcs", value=str(itm.get("pcs") or ""), key=f"pcs_{i}")
-            qty = col_d.number_input("Qty (kg)", value=safe_float(itm.get("qty", 0.0)), key=f"qty_{i}")
-            rate = col_e.number_input("Rate (₹/kg)", value=safe_float(itm.get("rate", 0.0)), key=f"rate_{i}")
+            col_h, col_c, col_d, col_e = st.columns([1, 1, 1, 1])
+            
+            # HSN Code - auto-fill from lookup, editable
+            default_hsn = itm.get("hsn", "") or HSN_CODES.get(code, "721550")
+            hsn = col_h.text_input("HSN Code", value=default_hsn, key=f"hsn_{i}")
+            
+            pcs = col_c.text_input("Pcs", value=str(itm.get("pcs", "")), key=f"pcs_{i}")
+            qty = col_d.number_input("Qty (kg)", value=float(itm.get("qty", 0.0)), key=f"qty_{i}")
+            rate = col_e.number_input("Rate (₹/kg)", value=float(itm.get("rate", 0.0)), key=f"rate_{i}")
             
             # Update source of truth so edits persist
             itm["code"] = code
             itm["desc"] = desc
+            itm["hsn"] = hsn
             itm["pcs"] = pcs
             itm["qty"] = qty
             itm["rate"] = rate
@@ -255,7 +283,7 @@ if uploaded_file is not None:
             
         rows_html = ""
         for idx, itm in enumerate(edited_items, 1):
-            hsn = HSN_CODES.get(itm['code'], "721550")
+            hsn = itm.get('hsn', '') or HSN_CODES.get(itm['code'], "721550")
             tax_val = itm['qty'] * itm['rate']
             rows_html += f"""
             <tr>
@@ -334,7 +362,7 @@ if uploaded_file is not None:
                         <table style="width:100%; border-collapse:collapse;">
                             <tr><td style="width:35%; border:none; padding:3px;">Invoice No.:</td><td style="border:none; padding:3px; font-weight:bold;">{inv_no}</td></tr>
                             <tr><td style="border:none; padding:3px;">Invoice Date:</td><td style="border:none; padding:3px; font-weight:bold;">{inv_date}</td></tr>
-                            <tr><td style="border:none; padding:3px;">Terms:</td><td style="border:none; padding:3px;">{payment_terms}</td></tr>
+                            <tr><td style="border:none; padding:3px;">Terms:</td><td style="border:none; padding:3px;">{doc_type}</td></tr>
                             <tr><td style="border:none; padding:3px;">Supply:</td><td style="border:none; padding:3px;">West Bengal</td></tr>
                         </table>
                     </td>
@@ -345,7 +373,7 @@ if uploaded_file is not None:
                 <tr>
                     <td style="width: 55%; border-top:none;">Delivery At: {client_info['Delivery']}</td>
                     <td style="width: 20%; border-top:none;">Transport: Lorry</td>
-                    <td style="width: 25%; border-top:none;">Vehicle No. : {vehicle_no}</td>
+                    <td style="width: 25%; border-top:none;">Vehicle No. : </td>
                 </tr>
             </table>
 
