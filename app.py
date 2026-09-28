@@ -150,18 +150,27 @@ def extract_bill_details(image_file):
     Extract handwritten overrides if present. Return ONLY valid JSON.
     """
     
-    # Send directly to Gemini without extra libraries
-    if image_file.name.lower().endswith('.pdf'):
-        payload = [prompt, {"mime_type": "application/pdf", "data": image_file.getvalue()}]
-    else:
-        img = Image.open(image_file)
-        payload = [prompt, img]
-
-    response = model.generate_content(payload)
-    clean_text = response.text.replace("```json", "").replace("```", "").strip()
     try:
+        if hasattr(image_file, 'seek'):
+            image_file.seek(0)
+        file_bytes = image_file.getvalue()
+        
+        name = image_file.name.lower()
+        if name.endswith('.pdf'):
+            mime = "application/pdf"
+        elif name.endswith('.png'):
+            mime = "image/png"
+        else:
+            mime = "image/jpeg"
+            
+        payload = [prompt, {"mime_type": mime, "data": file_bytes}]
+        response = model.generate_content(payload)
+        
+        clean_text = response.text.replace("```json", "").replace("```", "").strip()
         return json.loads(clean_text)
-    except Exception:
+    except Exception as e:
+        import streamlit as st
+        st.error(f"API Error during extraction: {str(e)}")
         return {}
 
 # -------------------------------------------------------------
