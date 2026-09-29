@@ -1,15 +1,49 @@
 import streamlit as st
 import json
-import google.generativeai as genai
-from PIL import Image
+import uuid
+import os
 from datetime import date
+import google.generativeai as genai
+
+from extraction import extract_bill_details
 
 # -------------------------------------------------------------
 # Configuration
 # -------------------------------------------------------------
 st.set_page_config(page_title="MSC Invoice Generator", page_icon="📑", layout="centered")
 
-# Get API key from Streamlit secrets or environment
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+CLIENTS_FILE = os.path.join(DATA_DIR, "clients.json")
+PRODUCTS_FILE = os.path.join(DATA_DIR, "products.json")
+
+# -------------------------------------------------------------
+# Data Helpers
+# -------------------------------------------------------------
+def load_json(path):
+    """Load a JSON file. Returns empty dict if file not found."""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+def save_json(path, data):
+    """Save data to a JSON file, creating directories if needed."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+def load_products():
+    """Load the products master list (not cached — can be updated at runtime)."""
+    return load_json(PRODUCTS_FILE)
+
+def load_clients():
+    """Load the clients database."""
+    return load_json(CLIENTS_FILE)
+
+# -------------------------------------------------------------
+# Gemini API Configuration
+# -------------------------------------------------------------
 if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 else:
@@ -17,201 +51,116 @@ else:
     if api_key_input:
         genai.configure(api_key=api_key_input)
 
-# Master item descriptions lookup
-MASTER_DESCRIPTIONS = {
-    "09112BL": 'BRIGHT M.S. 1.3/4" DIA. TOLERANCE ON DIA. -0.002"/-0.005". LENGTH: 19-20 FEET (En3B-BS970:1955)',
-    "09118BL": 'BRIGHT M.S. 1/2" DIA. TOLERANCE ON DIA. -0.001"/-0.003". LENGTH: 18-20 FEET (En3B-BS970:1955)',
-    "09119BL": 'BRIGHT M.S. 5/8" DIA. TOLERANCE ON DIA. -0.001"/-0.003". LENGTH: 18-20 FEET (En3B-BS970:1955)',
-    "09304BL": 'BRIGHT M.S. 7/8" DIA. TOLERANCE ON DIA. -0.001"/-0.003". LENGTH: 11-15 FEET (En3B-BS970:1955)',
-    "09336BL": 'BRIGHT M.S. FLAT 1" X 1/2" (25X12MM)',
-    "09113BL": 'BRIGHT M.S. 2" DIA. TOLERANCE ON DIA. +0.005"/+0.008". LENGTH: 18.5 FEET (En3B-BS970:1955)',
-    "09114BL": 'BRIGHT M.S. 2.1/4" DIA. TOLERANCE ON DIA. +0.005"/+0.008". LENGTH: 18.5 FEET (En3B-BS970:1955)',
-    "09283BL": 'BRIGHT M.S. 1.1/2" DIA. TOLERANCE ON DIA. -0.002"/-0.005". LENGTH: 18-20 FEET (En3B-BS970:1955)',
-    "09822BL": 'BRIGHT CK45 STEEL - 2.1/4" DIA. GB TOL ON OD +0.014"/+0.018", HARDNESS 204 TO 249 BHN',
-    "09850BL": '2.204" DIA. BRIGHT MS BAR - DIA. TOLERANCE +0.005"/+0.008" (En3B-BS970:1955)',
-    "09831BL": 'BRIGHT MS 3" DIA. TOLERANCE +000/-0.004". LENGTH: 8 TO 10 FEET (En3B-BS970:1955)',
-    "09158BL": 'BRIGHT M.S. GB 45MM DIA. TOLERANCE ON DIA.',
-    "09110BL": 'BRIGHT M.S. 1" DIA. TOLERANCE -0.005"/-0.008". LENGTH: 8-12 FT (En3B-BS970:1955)',
-    "09111BL": 'BRIGHT MS 1.1/4" DIA. TOLERANCE -0.002"/-0.005". LENGTH: 20-21 FEET (En3B-BS970:1955)',
-    "09337BL": 'BRIGHT M.S. 3/4" DIA. TOLERANCE -0.001"/-0.003". LENGTH: 8-12 FT (En3B-BS970:1955)',
-    "09375BL": 'BRIGHT M.S. GB 1.3/4" DIA. TOLERANCE +0.008"/+0.012". LENGTH: 19-20 FEET (En3B-BS970:1955)',
-    "09376BL": 'BRIGHT M.S. 1.1/8" DIA. TOLERANCE -0.002"/-0.005". LENGTH: 18-20 FEET (En3B-BS970:1955)',
-    "09828BL": 'BRIGHT CK45 - 1.5/8" DIA. GB(SPECIAL), TOL ON O/D +0.004"/+0.006", HARDNESS 204-249BHN',
-    "09083BL": 'BRIGHT M.S. 1.31/32" (50MM) DIA. TOLERANCE -0.001"/-0.004" (En3B-BS970:1955)',
-    "09816BL": '1.3/8" DIA BRIGHT CLASS IV STEEL (G.B) TOL ON DIA +0.008"/+0.012"',
-    "09823BL": 'BRIGHT CK45 STEEL - 2.1/2" DIA. GB TOL ON O/D +0.014"/+0.018"',
-    "09332BL": 'BRIGHT M.S. GB 5/8" DIA. TOLERANCE +0.008"/+0.012"',
-    "09307BL": '0.820" A/F HEXAGONAL BR. MS BAR (En3B-BS970:1955)',
-    "09394BL": 'BLACK M.S. FLAT 40 X 12 MM',
-    "09428BL": 'BLACK M.S. FLAT 50 X 12 MM',
-    "09246BL": 'M.S. CHANNEL 3" X 1.1/2" (75X40MM), LENGTH: 20-22 FT',
-    "09256BL": 'M.S. CHANNEL 4" X 2" (100X50MM), LENGTH: 18 FT',
-    "09427BL": 'M.S. ANGLE 3" X 3" X 1/4" (75X75X6 MM), LENGTH: 18-20 FT',
-    "09437BL": 'BLACK M.S. ROUND 100 MM DIA - HARDNESS 150 TO 180 BHN (En3B-BS970:1955)',
-    "09380BL": 'BLACK M.S. 125 MM DIA - HARDNESS 150 TO 180 BHN (En3B-BS970:1955)',
-    "09442BL": 'EN31 FLAT 40 X 25 MM',
-    "09451BL": 'EN31 FLAT 40 X 20 MM',
-    "09423BL": 'SEAMLESS STEEL TUBE 1.15/16" X 1.1/2"',
-    "105MM_EN8": '105MM CARBON STEEL En-8 ROUND',
-    "09516BL": '85MM DIA. EN-8 ROUND',
-    "09517BL": '75MM DIA. EN-8 ROUND',
-    "61131BL": '70MM DIA. EN-8 ROUND',
-    "09520BL": '65MM EN8 ROUND BAR',
-    "09330BL": 'DIA 130 MM EN-24 BLACK ROUND BAR',
-    "09329BL": 'DIA 110 MM EN-24 BLACK ROUND BAR',
-    "09326BL": 'DIA 90 MM EN-24 BLACK ROUND BAR',
-    "12050038": 'G.I. FLAT 50 X 6mm',
-    "12050041": 'G.I. FLAT 25 X 3mm',
-    "12050059": 'G.I. FLAT 19 X 3mm',
-    "12050040": 'G.I. FLAT 25 X 6mm'
-}
+# -------------------------------------------------------------
+# Load Business Data
+# -------------------------------------------------------------
+clients = load_clients()
+products = load_products()
 
-HSN_CODES = {
-    "09246BL": "721610", 
-    "09256BL": "721610", 
-    "09427BL": "721610",
-    "09442BL": "722860",
-    "09451BL": "722860",
-    "105MM_EN8": "721410",
-    "09516BL": "721410",
-    "09517BL": "721410",
-    "61131BL": "721410",
-    "09520BL": "721410",
-    "09330BL": "722830",
-    "09329BL": "722830",
-    "09326BL": "722830",
-    "12050038": "72123010",
-    "12050041": "72123010",
-    "12050059": "72123010",
-    "12050040": "72123010"
-}
+# ============================================================
+# CRITICAL: Process pending extraction BEFORE widgets render
+# This is the fix for StreamlitWidgetAlreadyInstantiatedError
+# ============================================================
+if "_pending_extraction" in st.session_state:
+    ext = st.session_state.pop("_pending_extraction")
 
-CLIENT_DATABASE = {
-    "Lagan Engineering Co. Ltd.": {
-        "Address": "14 KYD Street, Kolkata - 700016",
-        "GSTIN": "19AAACT9986F1ZP",
-        "State": "West Bengal   Code: 19",
-        "Delivery": "Lagan Engineering Co. Ltd., c/o Angus Jute Mills, Bhadeshwar, W.B."
-    },
-    "Birla Corporation Ltd., Unit Birla Jute Mill": {
-        "Address": "9/1 R.N. Mukherjee Road, Kolkata 700001",
-        "GSTIN": "19AABCB2075J1ZN",
-        "State": "West Bengal   Code: 19",
-        "Delivery": "Birla Jute Mill, P.O.Birlapur, 24 Parganas, West Bengal"
-    }
-}
+    # Only fill fields that are currently empty/default
+    if ext.get("order_no") and not st.session_state.get("order_no"):
+        st.session_state["order_no"] = str(ext["order_no"])
+    if ext.get("order_date") and not st.session_state.get("order_date"):
+        st.session_state["order_date"] = str(ext["order_date"])
+    if ext.get("vehicle_no") and not st.session_state.get("vehicle_no"):
+        st.session_state["vehicle_no"] = str(ext["vehicle_no"])
+    if ext.get("payment_terms") and not st.session_state.get("payment_terms"):
+        st.session_state["payment_terms"] = str(ext["payment_terms"])
 
-def num_to_words(num):
-    units = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
-             "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"]
-    tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"]
-    
-    def two_digits(n):
-        if n < 20: return units[n]
-        return tens[n // 10] + (" " + units[n % 10] if n % 10 != 0 else "")
-
-    rupees = int(num)
-    paise = int(round((num - rupees) * 100))
-    crore = rupees // 10000000; rupees %= 10000000
-    lakh = rupees // 100000; rupees %= 100000
-    thousand = rupees // 1000; rupees %= 1000
-    hundred = rupees // 100; rupees %= 100
-    
-    parts = []
-    if crore > 0: parts.append(two_digits(crore) + " Crore")
-    if lakh > 0: parts.append(two_digits(lakh) + " Lakh")
-    if thousand > 0: parts.append(two_digits(thousand) + " Thousand")
-    if hundred > 0: parts.append(two_digits(hundred) + " Hundred")
-    if rupees > 0: parts.append(two_digits(rupees))
-    
-    words = " ".join(parts) + " Rupees"
-    if paise > 0: words += f" and {two_digits(paise)} Paise"
-    return words + " Only"
-
-def extract_bill_details(image_files):
-    prompt = """
-    Extract all billing and item details from these bill/PO images into a clean JSON structure.
-    Combine items from all images into a single 'items' array.
-    {
-      "order_no": "P/2627/1552",
-      "order_date": "07-08-2026",
-      "vehicle_no": "WB-02-1234",
-      "payment_terms": "Net 30 Days",
-      "delivery_charges": 16500,
-      "items": [
-        {
-          "code": "09083BL",
-          "pcs": 0,
-          "qty": 560.0,
-          "rate": 70.0
-        }
-      ]
-    }
-    Extract handwritten overrides if present. Return ONLY valid JSON.
-    For 'vehicle_no', also check 'Lorry No' or 'Transport No'. If any field is missing, use null or 0.
-    """
-    
+    # Delivery charges
+    raw_del = ext.get("delivery_charges", 0)
     try:
-        payload = [prompt]
-        for image_file in image_files:
-            if hasattr(image_file, 'seek'):
-                image_file.seek(0)
-            file_bytes = image_file.getvalue()
-            
-            name = image_file.name.lower()
-            if name.endswith('.pdf'):
-                mime = "application/pdf"
-            elif name.endswith('.png'):
-                mime = "image/png"
-            else:
-                mime = "image/jpeg"
-                
-            payload.append({"mime_type": mime, "data": file_bytes})
+        dval = float(raw_del) if raw_del not in (None, "") else 0.0
+    except (ValueError, TypeError):
+        dval = 0.0
+    if dval != 0.0 and st.session_state.get("del_charges", 0.0) == 0.0:
+        st.session_state["del_charges"] = dval
 
-        # Fallback logic based on DRHP Analyzer v5
-        fallback_models = [
-            "gemini-3.5-flash-lite", 
-            "gemini-3.6-flash", 
-            "gemini-3.8-flash", 
-            "gemini-3.7-flash", 
-            "gemini-3.5-flash"
-        ]
-        
-        last_err = None
-        for i, model_name in enumerate(fallback_models):
+    # Process extracted items
+    new_items = ext.get("items", [])
+    learned_count = 0
+    if new_items:
+        for item in new_items:
+            # Assign a unique ID to each item (prevents index-based key collision)
+            item["id"] = str(uuid.uuid4())
+
+            code = str(item.get("code", "")).strip().upper()
+            item["code"] = code
+
+            # Ensure numeric types
             try:
-                import streamlit as st
-                model = genai.GenerativeModel(model_name)
-                response = model.generate_content(payload, request_options={"timeout": 600})
-                clean_text = response.text.replace("```json", "").replace("```", "").strip()
-                if i > 0:
-                    st.toast(f"✅ Succeeded using fallback model: {model_name}")
-                return json.loads(clean_text)
-            except Exception as e:
-                last_err = e
-                error_msg = str(e).lower()
-                # If it's a critical auth/argument error, stop immediately.
-                if "api key" in error_msg or "invalid argument" in error_msg:
-                    raise e
-                # Otherwise, it's likely a 503/429/Timeout, try next model
-                import streamlit as st
-                st.toast(f"Model {model_name} busy. Trying next...")
-                continue
-                
-        # If all models failed
-        raise last_err or Exception("All Gemini models failed due to server load.")
-        
-    except Exception as e:
-        import streamlit as st
-        st.error(f"API Error during extraction: {str(e)}")
-        return {}
+                item["qty"] = float(item.get("qty", 0) or 0)
+            except (ValueError, TypeError):
+                item["qty"] = 0.0
+            try:
+                item["rate"] = float(item.get("rate", 0) or 0)
+            except (ValueError, TypeError):
+                item["rate"] = 0.0
+
+            # Look up description from master list, or use extracted description
+            extracted_desc = str(item.get("desc", "")).strip()
+            master_entry = products.get(code, {})
+            if master_entry.get("description"):
+                item["desc"] = master_entry["description"]
+            elif extracted_desc:
+                item["desc"] = extracted_desc
+            else:
+                item["desc"] = code
+
+            # Look up HSN from master list
+            item["hsn"] = master_entry.get("hsn", "721550")
+
+            # Auto-learn: add new items to the master list
+            if code and code not in products:
+                products[code] = {
+                    "description": extracted_desc if extracted_desc else code,
+                    "hsn": "721550"
+                }
+                learned_count += 1
+
+        if learned_count > 0:
+            save_json(PRODUCTS_FILE, products)
+            st.toast(f"📚 Learned {learned_count} new item(s) for next time!")
+
+        if "items_list" not in st.session_state:
+            st.session_state["items_list"] = []
+        st.session_state["items_list"].extend(new_items)
+
+    st.toast("✅ Data extracted successfully!")
 
 # -------------------------------------------------------------
-# Streamlit App UI
+# Initialize Session State Defaults
 # -------------------------------------------------------------
+defaults = {
+    "order_no": "",
+    "order_date": "",
+    "vehicle_no": "",
+    "payment_terms": "",
+    "del_charges": 0.0,
+    "items_list": [],
+}
+for key, default_val in defaults.items():
+    if key not in st.session_state:
+        st.session_state[key] = default_val
+
+# ============================================================
+# UI
+# ============================================================
 st.title("📄 Murli Steel Invoicer")
 
-doc_type = st.radio("Document Type", ["PROFORMA INVOICE", "TAX INVOICE", "QUOTATION"], horizontal=True)
+# --- Document Configuration ---
+doc_type = st.radio(
+    "Document Type",
+    ["PROFORMA INVOICE", "TAX INVOICE", "QUOTATION"],
+    horizontal=True,
+)
 
 if doc_type == "PROFORMA INVOICE":
     default_inv = "PI/07/2026-27"
@@ -220,20 +169,14 @@ elif doc_type == "TAX INVOICE":
 else:
     default_inv = "QT/07/2026-27"
 
-inv_no = st.text_input("Document Number", value=default_inv)
-inv_date = st.text_input("Invoice Date", value=date.today().strftime("%d-%m-%Y"))
+c_doc1, c_doc2 = st.columns(2)
+inv_no = c_doc1.text_input("Document Number", value=default_inv)
+inv_date = c_doc2.text_input("Invoice Date", value=date.today().strftime("%d-%m-%Y"))
 
-selected_client_name = st.selectbox("Select Client", list(CLIENT_DATABASE.keys()))
-client_info = CLIENT_DATABASE[selected_client_name]
+selected_client_name = st.selectbox("Select Client", list(clients.keys()) if clients else ["No clients configured"])
+client_info = clients.get(selected_client_name, {})
 
-# Initialize global fields in session state
-if "order_no" not in st.session_state: st.session_state.order_no = ""
-if "order_date" not in st.session_state: st.session_state.order_date = ""
-if "vehicle_no" not in st.session_state: st.session_state.vehicle_no = ""
-if "payment_terms" not in st.session_state: st.session_state.payment_terms = ""
-if "del_charges" not in st.session_state: st.session_state.del_charges = 0.0
-if "items_list" not in st.session_state: st.session_state.items_list = []
-
+# --- Order & Delivery Details (all editable) ---
 st.subheader("Step 1: Order & Delivery Details")
 c1, c2, c3 = st.columns(3)
 order_no = c1.text_input("Order No.", key="order_no")
@@ -242,269 +185,144 @@ vehicle_no = c3.text_input("Vehicle No.", key="vehicle_no")
 
 c4, c5 = st.columns(2)
 payment_terms = c4.text_input("Payment Terms", key="payment_terms")
-del_charges = c5.number_input("Delivery Charges (₹)", key="del_charges")
+del_charges = c5.number_input("Delivery Charges (₹)", key="del_charges", min_value=0.0, format="%.2f")
 
+# --- Upload & Scan ---
 st.subheader("Step 2: Upload Bills (Optional)")
-uploaded_files = st.file_uploader("📷 Snap Photos or Upload Bills", type=["jpg", "jpeg", "png", "pdf"], accept_multiple_files=True)
+uploaded_files = st.file_uploader(
+    "📷 Snap Photos or Upload Bills",
+    type=["jpg", "jpeg", "png", "pdf"],
+    accept_multiple_files=True,
+)
 
 if uploaded_files:
-    if st.button("🔄 Scan Images & Extract Data"):
-        with st.spinner("Analyzing documents..."):
+    if st.button("🔄 Scan Images & Extract Data", use_container_width=True):
+        with st.spinner("Analyzing documents with Gemini AI..."):
             extracted = extract_bill_details(uploaded_files)
             if extracted:
-                if not st.session_state.order_no and extracted.get("order_no"):
-                    st.session_state.order_no = extracted.get("order_no")
-                if not st.session_state.order_date and extracted.get("order_date"):
-                    st.session_state.order_date = extracted.get("order_date")
-                if not st.session_state.vehicle_no and extracted.get("vehicle_no"):
-                    st.session_state.vehicle_no = extracted.get("vehicle_no")
-                if not st.session_state.payment_terms and extracted.get("payment_terms"):
-                    st.session_state.payment_terms = extracted.get("payment_terms")
-                
-                if st.session_state.del_charges == 0.0:
-                    raw_del = extracted.get("delivery_charges", 0.0)
-                    try:
-                        dval = float(raw_del) if raw_del not in (None, "") else 0.0
-                    except:
-                        dval = 0.0
-                    if dval != 0.0:
-                        st.session_state.del_charges = dval
-                        
-                # Append newly extracted items to the list so users can scan page by page
-                new_items = extracted.get("items", [])
-                if new_items:
-                    st.session_state.items_list.extend(new_items)
-            st.rerun()
+                # Store extraction for processing on next rerun (BEFORE widgets)
+                st.session_state["_pending_extraction"] = extracted
+                st.rerun()
+            else:
+                st.warning("Could not extract data. Please enter details manually.")
 
+# --- Items List (fully editable) ---
 st.subheader("Step 3: Items List")
-st.write("**Items List (Tap any box to adjust):**")
+st.caption("**Tap any field to edit. All fields are fully editable.**")
+
+# Reload products in case new items were learned
+products = load_products()
 
 edited_items = []
+items_to_delete = None
+
 for i, itm in enumerate(st.session_state.items_list):
-    with st.expander(f"Item #{i+1} - {itm.get('code', '')}", expanded=True):
+    item_id = itm.get("id", str(uuid.uuid4()))
+    itm["id"] = item_id  # ensure every item has an ID
+
+    with st.expander(f"Item #{i + 1} — {itm.get('code', 'New Item')}", expanded=True):
         col_a, col_b = st.columns([1, 3])
-        code = col_a.text_input("Code", value=itm.get("code", ""), key=f"code_{i}")
-        
-        default_desc = itm.get("desc", "")
-        if not default_desc or default_desc == code:
-            default_desc = MASTER_DESCRIPTIONS.get(code, code)
-            
-        desc = col_b.text_input("Description", value=default_desc, key=f"desc_{i}")
-        
+        code = col_a.text_input("Code", value=itm.get("code", ""), key=f"code_{item_id}")
+
+        # Look up description: use current value, or master list, or code
+        current_desc = itm.get("desc", "")
+        if not current_desc or current_desc == itm.get("code", ""):
+            current_desc = products.get(code, {}).get("description", code)
+
+        desc = col_b.text_input("Description", value=current_desc, key=f"desc_{item_id}")
+
         col_h, col_c, col_d, col_e = st.columns([1, 1, 1, 1])
-        default_hsn = itm.get("hsn", "") or HSN_CODES.get(code, "721550")
-        hsn = col_h.text_input("HSN Code", value=default_hsn, key=f"hsn_{i}")
-        
-        pcs = col_c.text_input("Pcs", value=str(itm.get("pcs", "")), key=f"pcs_{i}")
-        qty = col_d.number_input("Qty (kg)", value=float(itm.get("qty", 0.0)), key=f"qty_{i}")
-        rate = col_e.number_input("Rate (₹/kg)", value=float(itm.get("rate", 0.0)), key=f"rate_{i}")
-        
+        default_hsn = itm.get("hsn", "") or products.get(code, {}).get("hsn", "721550")
+        hsn = col_h.text_input("HSN Code", value=default_hsn, key=f"hsn_{item_id}")
+
+        pcs_val = str(itm.get("pcs", ""))
+        pcs = col_c.text_input("Pcs", value=pcs_val, key=f"pcs_{item_id}")
+
+        qty = col_d.number_input(
+            "Qty (kg)", value=float(itm.get("qty", 0.0)),
+            min_value=0.0, format="%.2f", key=f"qty_{item_id}"
+        )
+        rate = col_e.number_input(
+            "Rate (₹/kg)", value=float(itm.get("rate", 0.0)),
+            min_value=0.0, format="%.2f", key=f"rate_{item_id}"
+        )
+
+        # Update the item dict with current widget values
         itm["code"] = code
         itm["desc"] = desc
         itm["hsn"] = hsn
         itm["pcs"] = pcs
         itm["qty"] = qty
         itm["rate"] = rate
-        
+
         edited_items.append(itm)
-        
-        if st.button("🗑️ Delete this item", key=f"delete_{i}"):
-            st.session_state.items_list.pop(i)
-            st.rerun()
+
+        if st.button("🗑️ Delete this item", key=f"del_{item_id}"):
+            items_to_delete = item_id
+
+# Handle deletion outside the loop to avoid index issues
+if items_to_delete:
+    st.session_state.items_list = [
+        it for it in st.session_state.items_list if it.get("id") != items_to_delete
+    ]
+    st.rerun()
 
 if st.button("➕ Add New Item"):
     st.session_state.items_list.append({
-        "code": "", "desc": "", "pcs": "", "qty": 0.0, "rate": 0.0
+        "id": str(uuid.uuid4()),
+        "code": "",
+        "desc": "",
+        "hsn": "721550",
+        "pcs": "",
+        "qty": 0.0,
+        "rate": 0.0,
     })
     st.rerun()
 
-# Calculations
-total_taxable = sum(it["qty"] * it["rate"] for it in edited_items)
+# --- Calculations ---
+total_taxable = sum(it.get("qty", 0) * it.get("rate", 0) for it in edited_items)
 taxable_val = total_taxable + del_charges
 cgst = taxable_val * 0.09
 sgst = taxable_val * 0.09
 grand_total = taxable_val + cgst + sgst
 
 st.markdown("---")
-st.write(f"**Total Before Tax:** ₹{total_taxable:,.2f}")
-st.write(f"**Taxable Value:** ₹{taxable_val:,.2f}")
-st.write(f"### **Grand Total:** ₹{grand_total:,.2f}")
+mc1, mc2, mc3 = st.columns(3)
+mc1.metric("Total Before Tax", f"₹{total_taxable:,.2f}")
+mc2.metric("Taxable Value", f"₹{taxable_val:,.2f}")
+mc3.metric("Grand Total", f"₹{grand_total:,.2f}")
 
+# --- PDF Generation ---
 if st.button("✅ Generate PDF", type="primary", use_container_width=True):
-    try:
-        from weasyprint import HTML
-    except Exception as e:
-        st.error("PDF generation is disabled on Windows. Please push to GitHub to use this feature on Streamlit Cloud.")
-        st.stop()
-        
-    rows_html = ""
-    for idx, itm in enumerate(edited_items, 1):
-        hsn = itm.get('hsn', '') or HSN_CODES.get(itm['code'], "721550")
-        tax_val = itm['qty'] * itm['rate']
-        rows_html += f"""
-        <tr>
-            <td>{idx}</td>
-            <td>{itm['code']}</td>
-            <td style="text-align: left; font-size: 9px;">{itm['desc']}</td>
-            <td>{hsn}</td>
-            <td>{itm.get('pcs', '')}</td>
-            <td>{itm['qty']:,.2f}</td>
-            <td style="text-align: right;">{itm['rate']:,.2f}</td>
-            <td style="text-align: right;">{tax_val:,.2f}</td>
-        </tr>
-        """
+    if not edited_items:
+        st.warning("Add at least one item before generating a PDF.")
+    else:
+        try:
+            from pdf_generator import generate_invoice_pdf
 
-    full_html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-    <style>
-        @page {{ size: A4; margin: 10mm; }}
-        * {{ box-sizing: border-box; }}
-        body {{ font-family: Arial, sans-serif; font-size: 11px; margin: 0; padding: 0; color: #000; }}
-        .invoice-box {{ border: 1px solid #000; width: 100%; }}
-        .header {{ text-align: center; border-bottom: 1px solid #000; padding: 5px; }}
-        .company-name {{ font-size: 24px; font-weight: bold; color: #003399; margin: 5px 0; }}
-        .info-table {{ width: 100%; border-collapse: collapse; border-bottom: 1px solid #000; }}
-        .info-table td {{ border: 1px solid #000; padding: 4px; vertical-align: top; }}
-        .section-title {{ text-align: center; font-weight: bold; background-color: #f0f0f0; }}
-        .items-table {{ width: 100%; border-collapse: collapse; }}
-        .items-table th, .items-table td {{ border: 1px solid #000; padding: 4px; text-align: center; }}
-        .items-table th {{ background-color: #f0f0f0; font-size: 10px; }}
-        .min-height-row td {{ height: 100px; }}
-        .totals-box {{ width: 40%; float: right; border-collapse: collapse; }}
-        .totals-box td {{ border: 1px solid #000; padding: 4px; text-align: right; }}
-        .footer-table {{ width: 100%; border-collapse: collapse; border-top: 1px solid #000; }}
-        .footer-table td {{ padding: 4px; vertical-align: top; }}
-        .clear {{ clear: both; }}
-    </style>
-    </head>
-    <body>
-    <div class="invoice-box">
-        
-        <div class="header">
-            <table style="width: 100%; border: none;">
-                <tr>
-                    <td style="width:33%; border: none;"></td>
-                    <td style="width:34%; text-align:center; border: none;">
-                        <span style="border: 1px solid #000; padding: 2px 10px; font-weight: bold; font-size:12px;">{doc_type}</span>
-                    </td>
-                    <td style="width:33%; text-align:right; font-size:10px; border: none;">Original for Buyer/ Seller</td>
-                </tr>
-            </table>
-            <div class="company-name">MURLI STEEL CORPORATION</div>
-            <div style="font-size:11px;">9/12, Lal Bazar Street, Mercantile Building, 'B' Block, 1st Floor, Kolkata - 700001, India</div>
-            <div style="font-size:11px;">Phone: (033) 2210 1650 | Mobile: 9830242818 | Email: shradkakrania@gmail.com</div>
-            <div style="font-weight:bold; font-size:12px; margin-top:5px;">PAN: AKAPK4846L | GSTIN: 19AKAPK4846L1ZS</div>
-        </div>
+            pdf_bytes = generate_invoice_pdf(
+                doc_type=doc_type,
+                inv_no=inv_no,
+                inv_date=inv_date,
+                client_name=selected_client_name,
+                client_info=client_info,
+                order_no=order_no,
+                order_date=order_date,
+                vehicle_no=vehicle_no,
+                payment_terms=payment_terms,
+                items=edited_items,
+                del_charges=del_charges,
+                products=products,
+            )
 
-        <table class="info-table">
-            <tr>
-                <td style="width: 50%;" class="section-title">BILLED TO PARTY</td>
-                <td style="width: 50%;" class="section-title">INVOICE DETAILS</td>
-            </tr>
-            <tr>
-                <td style="padding:0;">
-                    <table style="width:100%; border-collapse:collapse;">
-                        <tr><td style="width:25%; border:none; padding:3px;">Name:</td><td style="border:none; padding:3px; font-weight:bold;">{selected_client_name}</td></tr>
-                        <tr><td style="border:none; padding:3px;">Address:</td><td style="border:none; padding:3px;">{client_info['Address']}</td></tr>
-                        <tr><td style="border:none; padding:3px;">GSTIN:</td><td style="border:none; padding:3px; font-weight:bold;">{client_info['GSTIN']}</td></tr>
-                        <tr><td style="border:none; padding:3px;">Order No.:</td><td style="border:none; padding:3px;">{order_no}</td></tr>
-                        <tr><td style="border:none; padding:3px;">Order Date:</td><td style="border:none; padding:3px;">{order_date}</td></tr>
-                        <tr><td style="border:none; padding:3px;">State:</td><td style="border:none; padding:3px;">{client_info['State']}</td></tr>
-                    </table>
-                </td>
-                <td style="padding:0;">
-                    <table style="width:100%; border-collapse:collapse;">
-                        <tr><td style="width:35%; border:none; padding:3px;">Invoice No.:</td><td style="border:none; padding:3px; font-weight:bold;">{inv_no}</td></tr>
-                        <tr><td style="border:none; padding:3px;">Invoice Date:</td><td style="border:none; padding:3px; font-weight:bold;">{inv_date}</td></tr>
-                        <tr><td style="border:none; padding:3px;">Terms:</td><td style="border:none; padding:3px;">{payment_terms if payment_terms else doc_type}</td></tr>
-                        <tr><td style="border:none; padding:3px;">Supply:</td><td style="border:none; padding:3px;">West Bengal</td></tr>
-                    </table>
-                </td>
-            </tr>
-        </table>
-
-        <table class="info-table" style="border-top:none;">
-            <tr>
-                <td style="width: 55%; border-top:none;">Delivery At: {client_info['Delivery']}</td>
-                <td style="width: 20%; border-top:none;">Transport: Lorry</td>
-                <td style="width: 25%; border-top:none;">Vehicle No. : {vehicle_no}</td>
-            </tr>
-        </table>
-
-        <table class="items-table" style="border-top:none;">
-            <tr>
-                <th style="width: 4%;">SN</th>
-                <th style="width: 14%;">Item Code</th>
-                <th style="width: 38%;">Description</th>
-                <th style="width: 8%;">HSN</th>
-                <th style="width: 6%;">Pcs</th>
-                <th style="width: 10%;">Qty</th>
-                <th style="width: 8%;">Rate</th>
-                <th style="width: 12%;">Value (INR)</th>
-            </tr>
-            {rows_html}
-            <tr class="min-height-row">
-                <td style="border-bottom:none; border-top:none;"></td>
-                <td style="border-bottom:none; border-top:none;"></td>
-                <td style="border-bottom:none; border-top:none;"></td>
-                <td style="border-bottom:none; border-top:none;"></td>
-                <td style="border-bottom:none; border-top:none;"></td>
-                <td style="border-bottom:none; border-top:none;"></td>
-                <td style="border-bottom:none; border-top:none;"></td>
-                <td style="border-bottom:none; border-top:none;"></td>
-            </tr>
-            <tr>
-                <td colspan="4" style="text-align: right; font-weight: bold;">TOTAL:</td>
-                <td></td>
-                <td style="font-weight: bold;">{sum(it['qty'] for it in edited_items):,.2f}</td>
-                <td></td>
-                <td style="font-weight: bold; text-align: right;">{total_taxable:,.2f}</td>
-            </tr>
-        </table>
-
-        <div style="width: 100%;">
-            <div style="width: 55%; float: left; padding: 10px;">
-                <div style="font-weight:bold;">Total Invoice Amount in Words:</div>
-                <div style="margin-top: 5px;">{num_to_words(grand_total)}</div>
-            </div>
-            <table class="totals-box">
-                <tr><td style="text-align: left;">Total Amount Before Tax</td><td style="width: 40%;">{total_taxable:,.2f}</td></tr>
-                <tr><td style="text-align: left;">Delivery Charges</td><td>{del_charges:,.2f}</td></tr>
-                <tr><td style="text-align: left;">Taxable Value</td><td>{taxable_val:,.2f}</td></tr>
-                <tr><td style="text-align: left;">Add: CGST @ 9%</td><td>{cgst:,.2f}</td></tr>
-                <tr><td style="text-align: left;">Add: SGST @ 9%</td><td>{sgst:,.2f}</td></tr>
-                <tr style="background-color: #f0f0f0;"><td style="text-align: left; font-weight:bold;">Grand Total</td><td style="font-weight:bold;">{grand_total:,.2f}</td></tr>
-            </table>
-            <div class="clear"></div>
-        </div>
-
-        <table class="footer-table">
-            <tr>
-                <td style="width: 50%; border-right: 1px solid #000; padding: 8px;">
-                    <div style="font-weight: bold; margin-bottom: 5px;">Bank Details :</div>
-                    <div>HDFC Bank Ltd. | A/c No.: 00082000057539</div>
-                    <div>Branch: Sree Bhumi | IFSC: HDFC0004566</div>
-                    <div style="margin-top: 15px; font-size: 9px;">Goods once sold will not be taken back. E & O.E.</div>
-                </td>
-                <td style="width: 50%; text-align: left; padding: 8px; padding-left: 20px;">
-                    <div style="font-size: 10px;">Certified that the particulars given above are true and correct.</div>
-                    <div style="font-weight: bold; margin-top: 10px;">For MURLI STEEL CORPORATION</div>
-                    <div style="margin-top: 35px;">Authorised Signatory</div>
-                </td>
-            </tr>
-        </table>
-    </div>
-    </body>
-    </html>
-    """
-    
-    pdf_bytes = HTML(string=full_html).write_pdf()
-    st.download_button(
-        label="📥 Download / Share PDF",
-        data=pdf_bytes,
-        file_name=f"{inv_no.replace('/', '_')}.pdf",
-        mime="application/pdf",
-        use_container_width=True
-    )
+            st.download_button(
+                label="📥 Download / Share PDF",
+                data=bytes(pdf_bytes),
+                file_name=f"{inv_no.replace('/', '_')}.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
+            st.success("PDF generated successfully!")
+        except Exception as e:
+            st.error(f"PDF generation failed: {str(e)}")
+            st.exception(e)

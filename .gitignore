@@ -2,3 +2,12 @@ venv/
 .env
 __pycache__/
 .streamlit/secrets.toml
+*.jpeg
+*.jpg
+*.png
+*.pdf
+*.log
+data/lancedb/
+.pytest_cache/
+test_*.py
+test_invoice.pdf
