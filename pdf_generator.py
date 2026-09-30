@@ -53,12 +53,15 @@ def generate_invoice_pdf(doc_type, inv_no, inv_date, client_name, client_info, o
     
     text_w = pdf.get_string_width("TAX INVOICE") + 6
     pdf.set_xy((210 - text_w) / 2, 10)
-    pdf.cell(text_w, 5, "TAX INVOICE", border=1, align='C')
+    pdf.set_fill_color(255, 255, 255)
+    pdf.cell(text_w, 5, "TAX INVOICE", border=1, align='C', fill=True)
     
     pdf.set_font('helvetica', '', 7)
     pdf.set_xy(10, 10)
     pdf.cell(190, 5, "Original for Buyer/ Seller", border=0, align='R')
-    pdf.set_xy(10, 16)
+    
+    # Outer rectangle will start at Y=15, so we just move to Y=15
+    pdf.set_xy(10, 15)
     
     # Company Header
     pdf.set_font('helvetica', 'B', 16)
@@ -135,9 +138,9 @@ def generate_invoice_pdf(doc_type, inv_no, inv_date, client_name, client_info, o
     pdf.line(10, current_y, 200, current_y)
     
     delivery = client_info.get('delivery', '')
-    pdf.cell(95, 6, f"Delivery At: {delivery}", border='R')
-    pdf.cell(45, 6, "Transport: Lorry", border='R')
-    pdf.cell(50, 6, f"Vehicle No. : {vehicle_no}", border=0, new_x='LMARGIN', new_y='NEXT')
+    pdf.cell(115, 6, f"Delivery At: {delivery}", border='R')
+    pdf.cell(35, 6, "Transport: Lorry", border='R')
+    pdf.cell(40, 6, f"Vehicle No. : {vehicle_no}", border=0, new_x='LMARGIN', new_y='NEXT')
     
     current_y = pdf.get_y()
     pdf.line(10, current_y, 200, current_y)
@@ -188,13 +191,13 @@ def generate_invoice_pdf(doc_type, inv_no, inv_date, client_name, client_info, o
         desc_str = str(desc)
         desc_line1 = desc_str
         desc_line2 = ""
-        if len(desc_str) > 40:
-            split_idx = desc_str[:40].rfind(' ')
-            if split_idx == -1: split_idx = 40
+        if len(desc_str) > 55:
+            split_idx = desc_str[:55].rfind(' ')
+            if split_idx == -1: split_idx = 55
             desc_line1 = desc_str[:split_idx]
             desc_line2 = desc_str[split_idx:].strip()
-            if len(desc_line2) > 40:
-                desc_line2 = desc_line2[:37] + "..."
+            if len(desc_line2) > 55:
+                desc_line2 = desc_line2[:52] + "..."
                 
         row_height = 4.5
         pdf.set_font('helvetica', '', 8)
@@ -270,7 +273,7 @@ def generate_invoice_pdf(doc_type, inv_no, inv_date, client_name, client_info, o
     pdf.line(130, pdf.get_y(), 200, pdf.get_y())
     
     txt = amount_words_list[0] if len(amount_words_list) > 0 else ""
-    pdf.cell(120, 5, f"  {txt}", border='L', align='L')
+    pdf.cell(120, 5, f"{txt}", border='L', align='L')
     pdf.set_font('helvetica', '', 8)
     pdf.cell(46, 5, "Delivery Charges", border='L', align='L')
     pdf.cell(24, 5, fmt(del_charges), border='LR', align='R', new_x='LMARGIN', new_y='NEXT')
@@ -278,7 +281,7 @@ def generate_invoice_pdf(doc_type, inv_no, inv_date, client_name, client_info, o
     
     pdf.set_font('helvetica', 'B', 8)
     txt = amount_words_list[1] if len(amount_words_list) > 1 else ""
-    pdf.cell(120, 5, f"  {txt}", border='L', align='L')
+    pdf.cell(120, 5, f"{txt}", border='L', align='L')
     pdf.set_font('helvetica', '', 8)
     pdf.cell(46, 5, "Taxable Value", border='L', align='L')
     pdf.cell(24, 5, fmt(taxable_val), border='LR', align='R', new_x='LMARGIN', new_y='NEXT')
@@ -286,7 +289,7 @@ def generate_invoice_pdf(doc_type, inv_no, inv_date, client_name, client_info, o
     
     pdf.set_font('helvetica', 'B', 8)
     txt = amount_words_list[2] if len(amount_words_list) > 2 else ""
-    pdf.cell(120, 5, f"  {txt}", border='L', align='L')
+    pdf.cell(120, 5, f"{txt}", border='L', align='L')
     pdf.set_font('helvetica', '', 8)
     pdf.cell(46, 5, "Add: CGST @ 9%", border='L', align='L')
     pdf.cell(24, 5, fmt(cgst), border='LR', align='R', new_x='LMARGIN', new_y='NEXT')
@@ -305,27 +308,27 @@ def generate_invoice_pdf(doc_type, inv_no, inv_date, client_name, client_info, o
     
     # Bank Details
     pdf.set_font('helvetica', 'B', 8)
-    pdf.cell(100, 5, "Bank Details :", border='L', align='L')
+    pdf.cell(100, 5, "Bank Details :", border='R', align='L')
     pdf.set_font('helvetica', '', 7)
-    pdf.cell(90, 5, "Certified that the particulars given above are true and correct.", border='R', align='L', new_x='LMARGIN', new_y='NEXT')
+    pdf.cell(90, 5, " Certified that the particulars given above are true and correct.", border=0, align='L', new_x='LMARGIN', new_y='NEXT')
     
     pdf.set_font('helvetica', '', 8)
-    pdf.cell(100, 5, "HDFC Bank Ltd. | A/c No.: 00082000057539", border='L', align='L')
+    pdf.cell(100, 5, "HDFC Bank Ltd. | A/c No.: 00082000057539", border='R', align='L')
     pdf.set_font('helvetica', 'B', 8)
-    pdf.cell(90, 5, "For MURLI STEEL CORPORATION", border='R', align='L', new_x='LMARGIN', new_y='NEXT')
+    pdf.cell(90, 5, " For MURLI STEEL CORPORATION", border=0, align='L', new_x='LMARGIN', new_y='NEXT')
     
     pdf.set_font('helvetica', '', 8)
-    pdf.cell(100, 5, "Branch: Sree Bhumi | IFSC: HDFC0004566", border='L', align='L')
-    pdf.cell(90, 5, "", border='R', align='L', new_x='LMARGIN', new_y='NEXT')
+    pdf.cell(100, 5, "Branch: Sree Bhumi | IFSC: HDFC0004566", border='R', align='L')
+    pdf.cell(90, 5, "", border=0, align='L', new_x='LMARGIN', new_y='NEXT')
     
-    pdf.cell(100, 5, "", border='L', align='L')
-    pdf.cell(90, 5, "", border='R', align='L', new_x='LMARGIN', new_y='NEXT')
+    pdf.cell(100, 5, "", border='R', align='L')
+    pdf.cell(90, 5, "", border=0, align='L', new_x='LMARGIN', new_y='NEXT')
     
     pdf.set_font('helvetica', '', 7)
-    pdf.cell(100, 5, "Goods once sold will not be taken back. E & O.E.", border='L', align='L')
+    pdf.cell(100, 5, "Goods once sold will not be taken back. E & O.E.", border='R', align='L')
     pdf.set_font('helvetica', '', 8)
-    pdf.cell(90, 5, "Authorised Signatory", border='R', align='L', new_x='LMARGIN', new_y='NEXT')
+    pdf.cell(90, 5, " Authorised Signatory", border=0, align='L', new_x='LMARGIN', new_y='NEXT')
     
-    pdf.rect(10, 10, 190, pdf.get_y() - 10)
+    pdf.rect(10, 15, 190, pdf.get_y() - 15)
     return pdf.output()
 
