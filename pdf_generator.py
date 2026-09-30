@@ -179,44 +179,40 @@ def generate_invoice_pdf(doc_type, inv_no, inv_date, client_name, client_info, o
     sgst = taxable_val * 0.09
     grand_total = round(taxable_val + cgst + sgst)
     
-    amount_words = f"Amount in Words: {num_to_words(grand_total)}"
-    words = amount_words.split(' ')
-    words_lines = []
-    current_line = ""
-    for word in words:
-        if pdf.get_string_width(current_line + word + " ") < 118:
-            current_line += word + " "
-        else:
-            words_lines.append(current_line.strip())
-            current_line = word + " "
-    if current_line:
-        words_lines.append(current_line.strip())
+    amount_text = f"Amount in Words: {num_to_words(grand_total)}"
     
-    while len(words_lines) < 6:
-        words_lines.append("")
+    # Dynamically reduce font size if text is too long (limit: ~118mm)
+    pdf.set_font('helvetica', 'B', 8)
+    font_size = 8
+    while pdf.get_string_width(amount_text) > 118 and font_size > 5:
+        font_size -= 0.5
+        pdf.set_font('helvetica', 'B', font_size)
     
-    pdf.cell(120, 6, words_lines[0], border='L', align='L')
+    pdf.cell(120, 6, amount_text, border='L', align='L')
+    
+    # Restore original font size for the rest of the layout
+    pdf.set_font('helvetica', 'B', 8)
     pdf.cell(46, 6, "Total Before Tax:", border='L', align='L')
     pdf.cell(24, 6, f"{total_taxable:.2f}", border='R', align='R', new_x='LMARGIN', new_y='NEXT')
     
-    pdf.cell(120, 6, words_lines[1], border='L', align='L')
+    pdf.cell(120, 6, "", border='L', align='L')
     pdf.cell(46, 6, "Delivery Charges:", border='L', align='L')
     pdf.cell(24, 6, f"{del_charges:.2f}", border='R', align='R', new_x='LMARGIN', new_y='NEXT')
     
-    pdf.cell(120, 6, words_lines[2], border='L', align='L')
+    pdf.cell(120, 6, "", border='L', align='L')
     pdf.cell(46, 6, "Taxable Value:", border='L', align='L')
     pdf.cell(24, 6, f"{taxable_val:.2f}", border='R', align='R', new_x='LMARGIN', new_y='NEXT')
     
-    pdf.cell(120, 6, words_lines[3], border='L', align='L')
+    pdf.cell(120, 6, "", border='L', align='L')
     pdf.cell(46, 6, "CGST @9%:", border='L', align='L')
     pdf.cell(24, 6, f"{cgst:.2f}", border='R', align='R', new_x='LMARGIN', new_y='NEXT')
     
-    pdf.cell(120, 6, words_lines[4], border='L', align='L')
+    pdf.cell(120, 6, "", border='L', align='L')
     pdf.cell(46, 6, "SGST @9%:", border='L', align='L')
     pdf.cell(24, 6, f"{sgst:.2f}", border='R', align='R', new_x='LMARGIN', new_y='NEXT')
     
     pdf.set_fill_color(240, 240, 240)
-    pdf.cell(120, 6, words_lines[5], border='LB', align='L')
+    pdf.cell(120, 6, "", border='LB', align='L')
     pdf.cell(46, 6, "Grand Total:", border='LB', align='L', fill=True)
     pdf.cell(24, 6, f"{grand_total:.2f}", border='BR', align='R', fill=True, new_x='LMARGIN', new_y='NEXT')
     

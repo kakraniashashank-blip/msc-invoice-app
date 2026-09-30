@@ -2,8 +2,23 @@ import streamlit as st
 import json
 import uuid
 import os
+import sys
 from datetime import date
 import google.generativeai as genai
+
+# Disable QuickEdit mode on Windows to prevent the app from freezing
+if os.name == 'nt':
+    import ctypes
+    try:
+        kernel32 = ctypes.windll.kernel32
+        STD_INPUT_HANDLE = -10
+        handle = kernel32.GetStdHandle(STD_INPUT_HANDLE)
+        mode = ctypes.c_uint32()
+        kernel32.GetConsoleMode(handle, ctypes.byref(mode))
+        mode.value &= ~0x0040  # Remove ENABLE_QUICK_EDIT_MODE
+        kernel32.SetConsoleMode(handle, mode)
+    except Exception:
+        pass
 
 from extraction import extract_bill_details
 
