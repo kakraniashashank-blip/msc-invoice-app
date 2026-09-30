@@ -183,8 +183,8 @@ def generate_invoice_pdf(doc_type, inv_no, inv_date, client_name, client_info, o
     
     # Dynamically reduce font size if text is too long (limit: ~118mm)
     pdf.set_font('helvetica', 'B', 8)
-    font_size = 8
-    while pdf.get_string_width(amount_text) > 118 and font_size > 5:
+    font_size = 8.0
+    while pdf.get_string_width(amount_text) > 117 and font_size > 4.5:
         font_size -= 0.5
         pdf.set_font('helvetica', 'B', font_size)
     

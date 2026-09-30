@@ -20,6 +20,10 @@ if os.name == 'nt':
     except Exception:
         pass
 
+import pdf_generator
+import importlib
+importlib.reload(pdf_generator)
+from pdf_generator import generate_invoice_pdf
 from extraction import extract_bill_details
 
 # -------------------------------------------------------------
@@ -168,7 +172,7 @@ for key, default_val in defaults.items():
 # ============================================================
 # UI
 # ============================================================
-st.title("📄 Murli Steel Invoicer (v2.1)")
+st.title("📄 Murli Steel Invoicer (v2.2)")
 
 # --- Document Configuration ---
 doc_type = st.radio(
