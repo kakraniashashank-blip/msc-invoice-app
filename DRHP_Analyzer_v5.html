@@ -1,0 +1,2086 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DRHP Analyzer v5</title>
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+<script>
+(function () {
+  try {
+    var t = localStorage.getItem('drhp_theme');
+    if (t === 'light') document.documentElement.setAttribute('data-theme', 'light');
+  } catch (e) {}
+})();
+</script>
+<style>
+  :root {
+    --bg: #0f0f0f; --surface: #141414; --surface-2: #1a1a1a;
+    --border: #2a2a2a; --border-light: #252525;
+    --text-primary: #e8e4da; --text-secondary: #ccc; --text-muted: #666; --text-dim: #555;
+    --gold: #c8b97a; --gold-dim: #3a3020;
+    --green: #5aaa7a; --green-dim: #1a4a2a; --green-bg: #0a1a0f;
+    --red: #e87a7a; --red-dim: #3a1a1a; --red-bg: #1a0a0a;
+    --amber: #b89a3a; --amber-dim: #3a3200; --amber-bg: #1a1400;
+    --blue: #7a9aee; --blue-dim: #1a2a4a; --blue-bg: #0a0f1a;
+  }
+  html[data-theme="light"] {
+    --bg: #f4f2ed; --surface: #ffffff; --surface-2: #f8f7f4;
+    --border: #ddd9d0; --border-light: #e8e4da;
+    --text-primary: #1a1a1a; --text-secondary: #333333; --text-muted: #666666; --text-dim: #888888;
+    --gold: #8b6914; --gold-dim: #f0e5c0;
+    --green: #2d7a4f; --green-dim: #c8e8d4; --green-bg: #eef7f1;
+    --red: #c0392b; --red-dim: #f0c8c4; --red-bg: #fdf0ee;
+    --amber: #8b6900; --amber-dim: #f0e0a0; --amber-bg: #fdf7e0;
+    --blue: #2c5aa0; --blue-dim: #c8d8f0; --blue-bg: #eef2fa;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Georgia', serif;
+    background: var(--bg); color: var(--text-primary);
+    min-height: 100vh; padding: 2rem;
+    transition: background 0.2s, color 0.2s;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+
+  .header { border-bottom: 1px solid var(--border); padding-bottom: 1.25rem; margin-bottom: 1.5rem; display: flex; align-items: baseline; gap: 1rem; }
+  .header h1 { font-size: 22px; font-weight: 400; letter-spacing: 0.05em; }
+  .header span { font-size: 12px; color: var(--text-muted); letter-spacing: 0.1em; text-transform: uppercase; }
+  .header-spacer { flex: 1; }
+  .theme-toggle, .ghost-btn {
+    padding: 7px 14px; background: none; border: 1px solid var(--border); color: var(--text-muted);
+    font-size: 12px; font-family: 'Georgia', serif; cursor: pointer; border-radius: 4px; letter-spacing: 0.05em; transition: all 0.2s;
+  }
+  .theme-toggle:hover, .ghost-btn:hover { border-color: var(--gold); color: var(--gold); }
+
+  /* Setup */
+  .api-row { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; margin-bottom: 10px; align-items: center; }
+  .api-row label, .model-row label { font-size: 12px; color: var(--text-muted); white-space: nowrap; letter-spacing: 0.05em; }
+  .api-row input {
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--text-primary);
+    padding: 10px 14px; font-size: 13px; font-family: 'Courier New', monospace; border-radius: 4px; outline: none; width: 100%;
+  }
+  .api-row input:focus { border-color: var(--gold); }
+  .validate-btn { padding: 10px 14px; background: none; border: 1px solid var(--border); color: var(--text-secondary); font-size: 12px; font-family: 'Georgia', serif; cursor: pointer; border-radius: 4px; white-space: nowrap; }
+  .validate-btn:hover { border-color: var(--gold); color: var(--gold); }
+  .validate-btn.valid { border-color: var(--green-dim); color: var(--green); }
+  .validate-btn.invalid { border-color: var(--red-dim); color: var(--red); }
+  .model-row { display: grid; grid-template-columns: auto 1fr; gap: 8px; margin-bottom: 10px; align-items: center; }
+  .model-row select { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-primary); padding: 10px 12px; font-size: 12px; font-family: 'Georgia', serif; border-radius: 4px; outline: none; cursor: pointer; width: 100%; }
+  .model-row select:focus { border-color: var(--gold); }
+
+  .drop-zone {
+    border: 1px dashed var(--border); border-radius: 6px; padding: 1.5rem; text-align: center;
+    color: var(--text-muted); font-size: 13px; cursor: pointer; margin-bottom: 10px; transition: border-color 0.2s;
+  }
+  .drop-zone:hover, .drop-zone.hover { border-color: var(--gold); color: var(--gold); }
+  .drop-zone.loaded { border-style: solid; border-color: var(--green-dim); color: var(--green); }
+
+  .run-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .run-btn {
+    padding: 11px 26px; background: var(--gold); border: none; color: #0f0f0f; font-family: 'Georgia', serif;
+    font-size: 14px; cursor: pointer; border-radius: 4px; letter-spacing: 0.03em;
+  }
+  .run-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .quota-note { font-size: 11px; color: var(--text-dim); letter-spacing: 0.03em; }
+
+  /* History */
+  .history-section { margin: 1.25rem 0; display: none; }
+  .history-section.show { display: block; }
+  .history-label { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 8px; }
+  .history-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .history-chip {
+    display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border: 1px solid var(--border);
+    border-radius: 4px; background: var(--surface); font-size: 12px; color: var(--text-secondary); cursor: pointer;
+  }
+  .history-chip:hover { border-color: var(--gold); }
+  .history-chip .del { color: var(--text-dim); cursor: pointer; padding: 0 2px; }
+  .history-chip .del:hover { color: var(--red); }
+
+  /* Progress */
+  .progress-sec { display: none; margin-bottom: 1.5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); padding: 1.25rem; }
+  .progress-sec.show { display: block; }
+  .prog-steps { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .pstep { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; color: var(--text-muted); background: var(--surface-2); }
+  .pstep .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim); }
+  .pstep.running { border-color: var(--gold); color: var(--gold); }
+  .pstep.running .dot { background: var(--gold); animation: pulse 1.1s infinite; }
+  .pstep.done { border-color: var(--green-dim); color: var(--green); }
+  .pstep.done .dot { background: var(--green); }
+  .pstep.fail { border-color: var(--red-dim); color: var(--red); }
+  .pstep.fail .dot { background: var(--red); }
+  .pstep .retry { cursor: pointer; text-decoration: underline; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .prog-note { font-size: 12px; color: var(--text-muted); line-height: 1.6; }
+
+  .err-banner { display: none; border: 1px solid var(--red-dim); background: var(--red-bg); color: var(--red); border-radius: 6px; padding: 12px 16px; font-size: 13px; margin-bottom: 1.25rem; line-height: 1.6; }
+  .err-banner.show { display: block; }
+
+  /* Results shell */
+  .results { display: none; }
+  .results.show { display: block; }
+  .co-header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 4px; }
+  .co-header h2 { font-size: 26px; font-weight: 400; }
+  .co-sub { font-size: 13px; color: var(--text-muted); margin-bottom: 1.25rem; line-height: 1.6; }
+  .chip { display: inline-block; padding: 3px 10px; border-radius: 3px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; border: 1px solid var(--border); color: var(--text-secondary); }
+  .chip.compelling { background: var(--green-bg); color: var(--green); border-color: var(--green-dim); }
+  .chip.cautious { background: var(--amber-bg); color: var(--amber); border-color: var(--amber-dim); }
+  .chip.avoid { background: var(--red-bg); color: var(--red); border-color: var(--red-dim); }
+  .chip.info { background: var(--blue-bg); color: var(--blue); border-color: var(--blue-dim); }
+
+  .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 1.75rem; flex-wrap: wrap; }
+  .tab { padding: 10px 18px; background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-muted); font-family: 'Georgia', serif; font-size: 13px; letter-spacing: 0.04em; cursor: pointer; }
+  .tab:hover { color: var(--text-secondary); }
+  .tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+  .tab-badge { display: inline-block; min-width: 17px; padding: 1px 5px; margin-left: 6px; border-radius: 8px; background: var(--red-bg); border: 1px solid var(--red-dim); color: var(--red); font-size: 10px; text-align: center; }
+
+  .section-block { border: 1px solid var(--border); border-radius: 6px; background: var(--surface); padding: 1.4rem 1.5rem; margin-bottom: 1.25rem; }
+  .section-label { font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 1rem; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .section-label .pageref { color: var(--text-dim); text-transform: none; letter-spacing: 0.02em; font-size: 11px; }
+  .narrative { font-size: 13.5px; line-height: 1.75; color: var(--text-secondary); margin-bottom: 0.9rem; }
+  .narrative:last-child { margin-bottom: 0; }
+
+  /* Metric grid */
+  .mgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 1px; background: var(--border-light); border: 1px solid var(--border-light); border-radius: 6px; overflow: hidden; }
+  .mtile { background: var(--surface); padding: 12px 14px; }
+  .mtile .k { font-size: 11px; color: var(--text-muted); letter-spacing: 0.04em; margin-bottom: 5px; }
+  .mtile .v { font-size: 16px; font-family: 'Courier New', monospace; color: var(--text-primary); }
+  .mtile .v.pos { color: var(--green); } .mtile .v.neg { color: var(--red); } .mtile .v.warn { color: var(--amber); }
+  .mtile .s { font-size: 10.5px; color: var(--text-dim); margin-top: 3px; }
+
+  /* Tables */
+  .fin-table, .val-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 1.25rem; }
+  .fin-table th, .fin-table td { padding: 8px 12px; border-bottom: 1px solid var(--border-light); text-align: right; }
+  .fin-table th:first-child, .fin-table td:first-child { text-align: left; color: var(--text-secondary); font-family: 'Georgia', serif; }
+  .fin-table th { color: var(--text-dim); font-weight: 400; font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; }
+  .fin-table td { color: var(--text-primary); font-family: 'Courier New', monospace; }
+  .fin-table tr.subtotal td { border-top: 1px solid var(--border); font-weight: 700; }
+  .fin-table tr.calc td { color: var(--gold); }
+  .fin-table td.stub, .fin-table th.stub { color: var(--text-dim); }
+  .fin-table tr.grp td { padding-top: 16px; color: var(--text-muted); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; border-bottom: none; }
+  .val-table th, .val-table td { padding: 8px 12px; border-bottom: 1px solid var(--border-light); text-align: left; }
+  .val-table th { color: var(--text-dim); font-weight: 400; font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; }
+  .val-table td { color: var(--text-secondary); }
+  .val-table td.num { font-family: 'Courier New', monospace; color: var(--text-primary); text-align: right; }
+  .val-table th.num { text-align: right; }
+  .val-table tr.own-row td { background: rgba(200,185,122,0.07); border-left: 3px solid var(--gold); color: var(--text-primary); font-weight: 700; }
+  .val-table tr.median-row td { color: var(--text-muted); font-style: italic; }
+  .val-table tr.warn-row td { background: var(--amber-bg); }
+
+  .tie-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 3px; font-size: 11px; letter-spacing: 0.05em; border: 1px solid var(--border); }
+  .tie-badge.pass { background: var(--green-bg); color: var(--green); border-color: var(--green-dim); }
+  .tie-badge.fail { background: var(--red-bg); color: var(--red); border-color: var(--red-dim); }
+  .tie-badge.na { background: var(--surface-2); color: var(--text-dim); }
+
+  /* Issue bar */
+  .issue-bar { display: flex; height: 26px; border-radius: 4px; overflow: hidden; margin-bottom: 8px; border: 1px solid var(--border); }
+  .fresh-seg { background: var(--gold); color: #111; font-size: 11px; display: flex; align-items: center; justify-content: center; }
+  .ofs-seg { background: var(--surface-2); color: var(--text-muted); font-size: 11px; display: flex; align-items: center; justify-content: center; }
+  .issue-bar-legend { display: flex; gap: 18px; font-size: 12px; color: var(--text-muted); flex-wrap: wrap; margin-bottom: 12px; }
+  .issue-bar-legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+
+  /* Band panel */
+  .band-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .band-grid label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+  .band-grid input { width: 100%; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-primary); padding: 8px 10px; font-size: 13px; font-family: 'Courier New', monospace; border-radius: 4px; outline: none; }
+  .band-grid input:focus { border-color: var(--gold); }
+  .rawlink { font-size: 12px; color: var(--blue); cursor: pointer; text-decoration: underline; }
+  .band-check { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+
+  /* Flags & scorecard */
+  .flag-card { border: 1px solid var(--border); border-left: 3px solid var(--text-dim); border-radius: 4px; padding: 12px 16px; margin-bottom: 10px; background: var(--surface-2); }
+  .flag-card.high { border-left-color: var(--red); }
+  .flag-card.medium { border-left-color: var(--amber); }
+  .flag-card.low { border-left-color: var(--blue); }
+  .flag-head { display: flex; gap: 10px; align-items: baseline; margin-bottom: 4px; flex-wrap: wrap; }
+  .flag-title { font-size: 13.5px; color: var(--text-primary); }
+  .flag-meta { font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); }
+  .flag-ev { font-size: 12.5px; color: var(--text-muted); line-height: 1.6; }
+
+  .score-chip { display: inline-block; padding: 2px 10px; border-radius: 3px; font-size: 11px; letter-spacing: 0.06em; }
+  .score-chip.Low { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-dim); }
+  .score-chip.Mid { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-dim); }
+  .score-chip.High { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-dim); }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+  @media (max-width: 860px) { .two-col { grid-template-columns: 1fr; } body { padding: 1rem; } }
+
+  .bull-box, .bear-box { border: 1px solid var(--border); border-radius: 6px; padding: 1.1rem 1.25rem; }
+  .bull-box { border-left: 3px solid var(--green); }
+  .bear-box { border-left: 3px solid var(--red); }
+  .bb-label { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px; }
+  .bull-box .bb-label { color: var(--green); } .bear-box .bb-label { color: var(--red); }
+  .bb-text { font-size: 13.5px; line-height: 1.7; color: var(--text-secondary); }
+
+  ul.plain { list-style: none; }
+  ul.plain li { font-size: 13px; line-height: 1.7; color: var(--text-secondary); padding-left: 16px; position: relative; margin-bottom: 5px; }
+  ul.plain li::before { content: '—'; position: absolute; left: 0; color: var(--gold); }
+
+  a { color: var(--blue); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <h1>DRHP Analyzer</h1>
+    <span>v5 · Gemini</span>
+    <div class="header-spacer"></div>
+    <button class="theme-toggle" id="themeToggle">Theme</button>
+  </div>
+
+  <div class="section-block" id="setupCard">
+    <div class="api-row">
+      <label for="apiKey">Gemini API key</label>
+      <input type="password" id="apiKey" placeholder="AIza..." autocomplete="off">
+      <button class="validate-btn" id="validateBtn">Validate</button>
+    </div>
+    <div class="band-check" style="margin-bottom:10px">
+      <input type="checkbox" id="rememberKey">
+      <label for="rememberKey">Remember this key on this device</label>
+    </div>
+    <div id="storageWarn" style="display:none;border:1px solid var(--amber-dim);background:var(--amber-bg);color:var(--amber);border-radius:4px;padding:10px 14px;font-size:12.5px;line-height:1.6;margin-bottom:10px"></div>
+    <div class="model-row">
+      <label for="modelSelect">Primary model</label>
+      <select id="modelSelect"></select>
+    </div>
+    <div class="drop-zone" id="dropZone">Drop the DRHP PDF here, or click to choose a file</div>
+    <input type="file" id="pdfInput" accept="application/pdf" style="display:none">
+    <div class="band-check" style="margin-bottom:10px">
+      <input type="checkbox" id="forceInline">
+      <label for="forceInline">Send the PDF inline instead of using the Files API (slower, works when file uploads are blocked; 18 MB limit)</label>
+    </div>
+    <div class="run-row">
+      <button class="run-btn" id="runBtn" disabled>Run analysis</button>
+      <button class="ghost-btn" id="testPdfBtn">Test PDF read</button>
+      <span class="chip info" id="pathChip" style="display:none"></span>
+      <span class="quota-note">One run = 4 extraction calls + 1 analysis call. Failed steps can be retried individually without redoing the run.</span>
+    </div>
+  </div>
+
+  <div class="history-section show" id="historySection">
+    <div class="history-label">Saved analyses</div>
+    <div class="history-chips" id="historyChips"></div>
+    <div style="margin-top:10px">
+      <button class="ghost-btn" id="btnLoadJson">Load an analysis from a file</button>
+      <input type="file" id="jsonInput" accept="application/json,.json" style="display:none">
+    </div>
+  </div>
+
+  <div id="diagOut" style="margin-bottom:1.25rem"></div>
+
+  <div class="progress-sec" id="progressSec">
+    <div class="prog-steps" id="progSteps"></div>
+    <div class="prog-note" id="progNote"></div>
+    <div id="diagTable" style="margin-top:1rem"></div>
+    <pre id="rawOut" style="white-space:pre-wrap;font-size:11.5px;color:var(--text-muted);margin-top:10px;max-height:300px;overflow:auto"></pre>
+  </div>
+
+  <div class="err-banner" id="errBanner"></div>
+
+  <div class="results" id="results">
+    <div class="co-header">
+      <h2 id="coName"></h2>
+      <span class="chip" id="verdictChip"></span>
+      <span class="chip info" id="unitChip"></span>
+      <span class="chip info" id="consolChip"></span>
+    </div>
+    <div class="co-sub" id="coSub"></div>
+    <div class="toolbar">
+      <button class="ghost-btn" id="btnExcel">Download Excel model</button>
+      <button class="ghost-btn" id="btnSaveJson">Save analysis to file</button>
+    </div>
+    <div class="tabs">
+      <button class="tab active" data-tab="overview">Overview</button>
+      <button class="tab" data-tab="financials">Financials</button>
+      <button class="tab" data-tab="business">Business &amp; Industry</button>
+      <button class="tab" data-tab="diligence">Diligence <span class="tab-badge" id="flagBadge" style="display:none"></span></button>
+      <button class="tab" data-tab="wheretolook">Where to look</button>
+    </div>
+    <div class="tab-content active" id="tab-overview"></div>
+    <div class="tab-content" id="tab-financials"></div>
+    <div class="tab-content" id="tab-business"></div>
+    <div class="tab-content" id="tab-diligence"></div>
+    <div class="tab-content" id="tab-wheretolook"></div>
+  </div>
+</div>
+<script>
+'use strict';
+/* ═══════════ CONFIG ═══════════ */
+const MODELS = [
+  { id: 'gemini-3.7-flash',      label: 'Gemini 3.7 Flash · 20 RPD',        },
+  { id: 'gemini-3.6-flash',      label: 'Gemini 3.6 Flash · 20 RPD',        },
+  { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite · 500 RPD',  },
+  { id: 'gemini-3.8-flash',      label: 'Gemini 3.8 Flash · 20 RPD',        },
+  { id: 'gemini-3.5-flash',      label: 'Gemini 3.5 Flash · 20 RPD',        }
+];
+const API_BASE = 'https://generativelanguage.googleapis.com';
+const HIST_KEY = 'drhp_v5_history';
+const DRAFT_KEY = 'drhp_v5_draft';
+const MAX_HIST = 6;
+
+/* ═══════════ STATE ═══════════ */
+let pdfFile = null;          // File object
+let pdfBase64 = null;        // lazy
+let uploadedFileUri = null;  // Files API uri (48h life)
+let pipeline = null;         // { steps: { fin, cap, biz, dil, ana } each {status,data,model,err} }
+let A = null;                // active analysis bundle { name, ts, band, fin, cap, biz, dil, ana, derived }
+
+const STEP_DEFS = [
+  { key: 'upload', label: 'Upload PDF' },
+  { key: 'map',    label: 'Document map' },
+  { key: 'fin',    label: 'Financial statements' },
+  { key: 'cap',    label: 'Capital & issue' },
+  { key: 'biz',    label: 'Business & industry' },
+  { key: 'dil',    label: 'Diligence' },
+  { key: 'ana',    label: 'Analysis' }
+];
+
+/* ═══════════ UTILS ═══════════ */
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function escHtml(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+const isNum = v => typeof v === 'number' && isFinite(v);
+function fmtNum(v, dec) {
+  if (!isNum(v)) return '—';
+  if (dec === undefined) dec = Math.abs(v) >= 100 ? 0 : Math.abs(v) >= 10 ? 1 : 2;
+  return v.toLocaleString('en-IN', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+const fmtPct = v => isNum(v) ? (v * 100).toFixed(1) + '%' : '—';
+const fmtX   = v => isNum(v) ? v.toFixed(2) + 'x' : '—';
+const fmtDays = v => isNum(v) ? Math.round(v) + 'd' : '—';
+function median(arr) {
+  const a = arr.filter(isNum).sort((x, y) => x - y);
+  if (!a.length) return null;
+  const m = Math.floor(a.length / 2);
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+}
+function parseNum(s) {
+  if (isNum(s)) return s;
+  if (typeof s !== 'string') return null;
+  const m = s.replace(/,/g, '').match(/-?\d+(\.\d+)?/);
+  return m ? parseFloat(m[0]) : null;
+}
+/* Parse a rupee amount string into ₹ crore. Handles crore/lakh/million/billion. */
+function parseAmountToCr(s) {
+  if (isNum(s)) return s;
+  if (typeof s !== 'string') return null;
+  const n = parseNum(s);
+  if (n === null) return null;
+  const t = s.toLowerCase();
+  if (/\bcr(ore)?s?\b|\bcr\.?/.test(t)) return n;
+  if (/lakh|lac/.test(t)) return n / 100;
+  if (/\bmillion\b|\bmn\b|\bmio\b/.test(t)) return n / 10;
+  if (/\bbillion\b|\bbn\b/.test(t)) return n * 100;
+  return n; // assume already crore
+}
+/* Factor to convert the extraction's currency_unit into crore. */
+function unitToCrFactor(unit) {
+  const t = (unit || '').toLowerCase();
+  if (/cr(ore)?/.test(t)) return 1;
+  if (/lakh|lac/.test(t)) return 0.01;
+  if (/million|mn/.test(t)) return 0.1;
+  if (/billion|bn/.test(t)) return 100;
+  return 1;
+}
+function nowTs() { return new Date().toISOString(); }
+function shortDate(iso) { try { return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }); } catch (e) { return ''; } }
+
+/* ═══════════ THEME / TABS ═══════════ */
+$('themeToggle').addEventListener('click', () => {
+  const cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  const next = cur === 'light' ? 'dark' : 'light';
+  if (next === 'light') document.documentElement.setAttribute('data-theme', 'light');
+  else document.documentElement.removeAttribute('data-theme');
+  try { localStorage.setItem('drhp_theme', next); } catch (e) {}
+});
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    tab.classList.add('active');
+    $('tab-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+/* ═══════════ HISTORY ═══════════ */
+function getHistory() { try { return JSON.parse(localStorage.getItem(HIST_KEY) || '[]'); } catch (e) { return []; } }
+function saveToHistory(bundle) {
+  let h = getHistory().filter(x => x.id !== bundle.id);
+  h.unshift(bundle);
+  h = h.slice(0, MAX_HIST);
+  try { localStorage.setItem(HIST_KEY, JSON.stringify(h)); } catch (e) { /* quota — drop oldest and retry once */
+    try { localStorage.setItem(HIST_KEY, JSON.stringify(h.slice(0, 3))); } catch (e2) {}
+  }
+  renderHistoryChips();
+}
+function deleteFromHistory(id) {
+  const h = getHistory().filter(x => x.id !== id);
+  try { localStorage.setItem(HIST_KEY, JSON.stringify(h)); } catch (e) {}
+  renderHistoryChips();
+}
+function renderHistoryChips() {
+  const h = getHistory();
+  const sec = $('historySection');
+  if (!h.length) { sec.classList.remove('show'); return; }
+  sec.classList.add('show');
+  $('historyChips').innerHTML = h.map(x =>
+    `<span class="history-chip" data-id="${escHtml(x.id)}"><span class="open">${escHtml(x.name)} · ${shortDate(x.ts)}</span><span class="del" title="Delete">×</span></span>`
+  ).join('');
+  document.querySelectorAll('.history-chip').forEach(chip => {
+    chip.querySelector('.open').addEventListener('click', () => {
+      const b = getHistory().find(x => x.id === chip.dataset.id);
+      if (b) { A = b; renderAll(); }
+    });
+    chip.querySelector('.del').addEventListener('click', ev => { ev.stopPropagation(); deleteFromHistory(chip.dataset.id); });
+  });
+}
+
+/* ═══════════ FILE INPUT ═══════════ */
+const dropZone = $('dropZone');
+dropZone.addEventListener('click', () => $('pdfInput').click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('hover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('hover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('hover');
+  if (e.dataTransfer.files.length) setPdf(e.dataTransfer.files[0]);
+});
+$('pdfInput').addEventListener('change', e => { if (e.target.files.length) setPdf(e.target.files[0]); });
+function setPdf(f) {
+  if (f.type !== 'application/pdf' && !/\.pdf$/i.test(f.name)) { showErr('That is not a PDF.'); return; }
+  pdfFile = f; pdfBase64 = null; uploadedFileUri = null;
+  dropZone.classList.add('loaded');
+  dropZone.textContent = f.name + ' · ' + (f.size / 1048576).toFixed(1) + ' MB';
+  updateRunBtn();
+}
+function updateRunBtn() { $('runBtn').disabled = !(pdfFile && $('apiKey').value.trim()); }
+$('apiKey').addEventListener('input', updateRunBtn);
+
+$('validateBtn').addEventListener('click', async () => {
+  const key = $('apiKey').value.trim();
+  const btn = $('validateBtn');
+  if (!key) return;
+  btn.textContent = '...';
+  try {
+    const r = await fetch(`${API_BASE}/v1beta/models?key=${encodeURIComponent(key)}&pageSize=1`);
+    const ok = r.ok;
+    btn.classList.toggle('valid', ok); btn.classList.toggle('invalid', !ok);
+    btn.textContent = ok ? 'Valid' : 'Invalid';
+  } catch (e) { btn.classList.add('invalid'); btn.textContent = 'Error'; }
+});
+
+function showErr(msg) { const b = $('errBanner'); b.innerHTML = escHtml(msg); b.classList.add('show'); }
+function clearErr() { $('errBanner').classList.remove('show'); }
+
+/* ═══════════ FILES API UPLOAD (with inline fallback) ═══════════ */
+async function fileToBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result.split(',')[1]);
+    r.onerror = () => rej(new Error('Could not read the PDF file.'));
+    r.readAsDataURL(file);
+  });
+}
+async function uploadToFilesApi(apiKey, file) {
+  const start = await fetch(`${API_BASE}/upload/v1beta/files?key=${encodeURIComponent(apiKey)}`, {
+    method: 'POST',
+    headers: {
+      'X-Goog-Upload-Protocol': 'resumable',
+      'X-Goog-Upload-Command': 'start',
+      'X-Goog-Upload-Header-Content-Length': String(file.size),
+      'X-Goog-Upload-Header-Content-Type': 'application/pdf',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ file: { display_name: file.name } })
+  });
+  if (!start.ok) throw new Error('Upload start failed: HTTP ' + start.status);
+  const uploadUrl = start.headers.get('x-goog-upload-url');
+  if (!uploadUrl) throw new Error('Upload URL not returned (CORS).');
+  const up = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: { 'X-Goog-Upload-Command': 'upload, finalize', 'X-Goog-Upload-Offset': '0' },
+    body: file
+  });
+  if (!up.ok) throw new Error('Upload failed: HTTP ' + up.status);
+  const meta = await up.json();
+  let f = meta.file;
+  let tries = 0;
+  while (f && f.state === 'PROCESSING' && tries < 60) {
+    await sleep(3000);
+    const r = await fetch(`${API_BASE}/v1beta/${f.name}?key=${encodeURIComponent(apiKey)}`);
+    f = await r.json();
+    tries++;
+  }
+  if (!f || f.state !== 'ACTIVE') throw new Error('File processing did not complete (state: ' + (f && f.state) + ').');
+  return f.uri;
+}
+/* Returns the "document part" for generateContent: file ref if possible, else inline. */
+let pdfPath = null;   // 'files-api' | 'inline'
+async function ensurePdfPart(apiKey, note) {
+  if (uploadedFileUri) return { fileData: { mimeType: 'application/pdf', fileUri: uploadedFileUri } };
+  const forceInline = $('forceInline') && $('forceInline').checked;
+  if (forceInline) {
+    if (pdfFile.size > 18 * 1048576) throw new Error('Inline mode selected but the PDF is larger than 18 MB. Uncheck it and use the Files API.');
+    note('Reading the PDF for inline upload…');
+    if (!pdfBase64) pdfBase64 = await fileToBase64(pdfFile);
+    pdfPath = 'inline';
+    setPathChip();
+    return { inlineData: { mimeType: 'application/pdf', data: pdfBase64 } };
+  }
+  try {
+    note('Uploading PDF to the Files API…');
+    uploadedFileUri = await uploadToFilesApi(apiKey, pdfFile);
+    pdfPath = 'files-api';
+    setPathChip();
+    return { fileData: { mimeType: 'application/pdf', fileUri: uploadedFileUri } };
+  } catch (e) {
+    if (pdfFile.size > 18 * 1048576) throw new Error('Files API upload failed and the PDF is too large to send inline (>18 MB). ' + e.message);
+    note('Files API unavailable (' + e.message + '). Falling back to inline upload — each extraction call will resend the PDF.');
+    if (!pdfBase64) pdfBase64 = await fileToBase64(pdfFile);
+    pdfPath = 'inline';
+    setPathChip();
+    return { inlineData: { mimeType: 'application/pdf', data: pdfBase64 } };
+  }
+}
+function setPathChip() {
+  const el = $('pathChip');
+  if (!el) return;
+  el.style.display = '';
+  el.textContent = pdfPath === 'files-api' ? 'PDF sent by file reference (Files API)' : 'PDF sent inline (base64)';
+}
+
+/* ── Diagnostic: does the model actually see the document? ── */
+async function testPdfRead() {
+  clearErr();
+  const apiKey = $('apiKey').value.trim();
+  if (!apiKey || !pdfFile) { showErr('Add an API key and a PDF first.'); return; }
+  const out = $('diagOut');
+  out.innerHTML = 'Running one small call…';
+  try {
+    const part = await ensurePdfPart(apiKey, m => { out.innerHTML = escHtml(m); });
+    const prompt = 'Look ONLY at the document provided. Return JSON: {"cover_page_issuer_name":"exact legal name printed on the cover page","lead_managers":["names of the book running lead managers on the cover"],"registrar":"registrar name","latest_fiscal_year_revenue_from_operations":"the figure exactly as printed, with its unit","page_number_of_restated_financial_statements":"printed page number"}. If you cannot see a document, return {"cover_page_issuer_name":"NO DOCUMENT RECEIVED"}.';
+    const r = await callWithFallback(apiKey, [part, { text: prompt }], { temperature: 0, maxTokens: 2048 });
+    const promptTok = (r.usage && (r.usage.promptTokenCount || r.usage.prompt_token_count)) || 0;
+    const verdict = promptTok > 20000
+      ? '<span class="tie-badge pass">Document reached the model — ' + promptTok.toLocaleString() + ' prompt tokens</span>'
+      : '<span class="tie-badge fail">Document did NOT reach the model — only ' + promptTok.toLocaleString() + ' prompt tokens (a DRHP is hundreds of thousands)</span>';
+    out.innerHTML = verdict + '<pre style="white-space:pre-wrap;font-size:12px;color:var(--text-muted);margin-top:10px">' + escHtml(JSON.stringify(r.json, null, 2)) + '</pre>';
+  } catch (e) {
+    out.innerHTML = '<span class="tie-badge fail">Failed</span> <span style="font-size:12px;color:var(--text-muted)">' + escHtml(e.message) + '</span>';
+  }
+}
+
+/* ═══════════ GEMINI CALL CORE ═══════════ */
+async function callGemini(apiKey, model, parts, opts) {
+  opts = opts || {};
+  const endpoint = `${API_BASE}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const body = {
+    contents: [{ parts: parts }],
+    generationConfig: {
+      temperature: opts.temperature !== undefined ? opts.temperature : 0.1,
+      maxOutputTokens: opts.maxTokens || 32768,
+      responseMimeType: 'application/json'
+    },
+    safetySettings: [
+      { category: 'HARM_CATEGORY_HARASSMENT',       threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_HATE_SPEECH',       threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+    ]
+  };
+  const resp = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await resp.json();
+  if (data.error) {
+    const msg = data.error.message || JSON.stringify(data.error);
+    /* Adaptive retry when the output-token cap is not supported at 32k */
+    if (/max_output_tokens|maxOutputTokens/i.test(msg) && (opts.maxTokens || 32768) > 8192) {
+      return callGemini(apiKey, model, parts, Object.assign({}, opts, { maxTokens: 8192 }));
+    }
+    throw new Error(msg);
+  }
+  const cand = data.candidates && data.candidates[0];
+  const usage = data.usageMetadata || {};
+  const text = cand && cand.content && cand.content.parts && cand.content.parts[0] && cand.content.parts[0].text;
+  if (!text) {
+    const reason = (cand && cand.finishReason) || 'UNKNOWN';
+    if (reason === 'MAX_TOKENS') throw new Error('MAX_TOKENS: model ran out of output space.');
+    if (reason === 'SAFETY') throw new Error('SAFETY: safety filter fired (litigation-heavy sections can do this). Try another model.');
+    if (reason === 'RECITATION') throw new Error('RECITATION: model refused to reproduce content. Try another model.');
+    throw new Error('No content returned. Finish reason: ' + reason);
+  }
+  return { text: text, usage: usage };
+}
+
+/* JSON extraction with fence-stripping and bracket repair */
+function extractJSON(text) {
+  text = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+  const first = text.indexOf('{'), last = text.lastIndexOf('}');
+  if (first === -1) throw new Error('No JSON object in response.');
+  let js = last > first ? text.substring(first, last + 1) : text.substring(first);
+  try { return JSON.parse(js); } catch (e) {}
+  /* Truncation repair: cut back to the last complete value, close open brackets */
+  let cut = js.lastIndexOf(',');
+  if (cut > 0) js = js.substring(0, cut);
+  const opens = [];
+  let inStr = false, esc = false;
+  for (let i = 0; i < js.length; i++) {
+    const c = js[i];
+    if (esc) { esc = false; continue; }
+    if (c === '\\') { esc = true; continue; }
+    if (c === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (c === '{' || c === '[') opens.push(c);
+    else if (c === '}' || c === ']') opens.pop();
+  }
+  let closer = '';
+  for (let i = opens.length - 1; i >= 0; i--) closer += opens[i] === '{' ? '}' : ']';
+  return JSON.parse(js + closer);
+}
+
+/* Try the selected model, then the rest in order. Returns {json, model}. */
+async function callWithFallback(apiKey, parts, opts, progressCb) {
+  const primary = $('modelSelect').value;
+  const order = [primary].concat(MODELS.map(m => m.id).filter(id => id !== primary));
+  let lastErr = null;
+  for (const model of order) {
+    try {
+      progressCb && progressCb(model);
+      const r = await callGemini(apiKey, model, parts, opts);
+      return { json: extractJSON(r.text), model: model, usage: r.usage, raw: r.text };
+    } catch (e) {
+      lastErr = e;
+      /* Quota / rate errors → try next model. Hard input errors → stop. */
+      if (/API key|invalid argument.*file|not found/i.test(e.message) && !/model/i.test(e.message)) throw e;
+    }
+  }
+  throw lastErr || new Error('All models failed.');
+}
+
+/* ═══════════ PROMPTS ═══════════ */
+const COMMON_RULES = `
+Rules that override everything else:
+- Return ONLY one valid JSON object matching the schema. No markdown, no backticks, no commentary.
+- Use the RESTATED CONSOLIDATED financial statements if present; otherwise restated standalone.
+- Use null for anything not disclosed. NEVER invent, estimate, or interpolate a number.
+- Every numeric array must have exactly one entry per period, aligned to the "periods" array order.
+- Keep all amounts in the single unit you declare in currency_unit.
+- In page_refs, give the printed page number(s) of the DRHP where each section was found, e.g. "pp. 312-318".`;
+
+const P_FIN = `You are a data extraction engine working on an Indian DRHP (Draft Red Herring Prospectus). Extract the RESTATED financial statements — statement of profit and loss, balance sheet (statement of assets and liabilities), and cash flow statement — for all fiscal years presented plus any stub/interim period.
+${COMMON_RULES}
+- periods: oldest first, e.g. ["FY23","FY24","FY25","3M Jun-25"]. Mark a stub by including months, e.g. "3M Jun-25" or "9M Dec-25".
+- Sign conventions: cfo/cfi/cff/net_change_in_cash exactly as reported (outflows negative). capex_ppe_purchase, interest_paid, income_tax_paid as POSITIVE magnitudes.
+- other_liabilities and other_assets are residuals: choose them so the stated totals reconcile (total_equity_and_liabilities and total_assets must equal the figures printed in the DRHP).
+
+Schema:
+{
+ "company_name": "string",
+ "currency_unit": "string, e.g. ₹ crore / ₹ million — the unit EVERY number below is in",
+ "is_consolidated": true,
+ "periods": ["FY23","FY24","FY25"],
+ "pnl": {
+   "revenue_operations": [n], "other_income": [n], "total_income": [n],
+   "cost_materials": [n], "purchases_stock_in_trade": [n], "changes_inventories": [n],
+   "employee_costs": [n], "finance_costs": [n], "depreciation": [n], "other_expenses": [n],
+   "total_expenses": [n], "pbt": [n], "total_tax": [n], "pat": [n],
+   "eps_basic": [n], "eps_diluted": [n]
+ },
+ "balance_sheet": {
+   "equity_share_capital": [n], "other_equity": [n], "total_equity": [n],
+   "borrowings_noncurrent": [n], "borrowings_current": [n], "lease_liabilities": [n],
+   "trade_payables": [n], "other_liabilities": [n], "total_equity_and_liabilities": [n],
+   "ppe_net": [n], "cwip": [n], "intangibles_goodwill": [n], "right_of_use_assets": [n],
+   "investments": [n], "inventories": [n], "trade_receivables": [n], "cash_and_bank": [n],
+   "other_assets": [n], "total_assets": [n]
+ },
+ "cash_flow": {
+   "cfo": [n], "cfi": [n], "cff": [n], "net_change_in_cash": [n],
+   "capex_ppe_purchase": [n], "interest_paid": [n], "income_tax_paid": [n]
+ },
+ "page_refs": { "pnl": "", "balance_sheet": "", "cash_flow": "" }
+}`;
+
+const P_CAP = `You are a data extraction engine working on an Indian DRHP. Extract issue structure, shareholding, selling shareholders, weighted average cost of acquisition (WACA), pre-IPO share issuances, and the peer comparison from "Basis for Offer Price". Look in: The Offer, Objects of the Offer, Capital Structure, Offer Document Summary, Basis for Offer Price.
+${COMMON_RULES}
+
+Schema:
+{
+ "issue": {
+   "fresh_issue_amount": "string with unit, e.g. ₹1,500 crore, or null",
+   "ofs_amount_or_shares": "string — OFS size in ₹ or shares",
+   "total_issue_size": "string or null",
+   "face_value": "string, e.g. ₹10",
+   "use_of_proceeds": [ { "purpose": "", "amount": "", "pct_of_fresh": "" } ],
+   "gcp_pct": "general corporate purposes as % of fresh issue, string or null"
+ },
+ "pre_issue_shares_outstanding": "string — absolute number of equity shares pre-offer",
+ "shareholding": {
+   "promoter_pre_ipo_pct": "", "promoter_post_ipo_pct": "string or null if band-dependent",
+   "top_shareholders_pre": [ { "name": "", "pct": "", "category": "Promoter|Promoter Group|Investor|Public" } ]
+ },
+ "ofs_sellers": [ { "name": "", "type": "Promoter|Promoter Group|Investor|Other", "shares_or_amount": "", "waca_per_share": "string ₹ or null" } ],
+ "promoter_waca": [ { "name": "", "waca_per_share": "" } ],
+ "pre_ipo_placements_18m": [ { "date": "", "nature": "e.g. Preferential Allotment / Rights / ESOP / Bonus", "price_per_share": "", "parties": "" } ],
+ "peer_comparison": {
+   "source_note": "which fiscal year the peer numbers are for",
+   "company_row": { "name": "", "revenue": "", "eps": "", "pe": "", "ronw_pct": "", "nav_per_share": "" },
+   "peers": [ { "name": "", "revenue": "", "eps": "", "pe": "", "ronw_pct": "", "nav_per_share": "" } ]
+ },
+ "page_refs": { "issue": "", "capital_structure": "", "basis_for_offer_price": "" }
+}`;
+
+const P_BIZ = `You are a data extraction engine working on an Indian DRHP. Extract business and industry facts. Look in: Our Business, Industry Overview, Offer Document Summary, Management chapters.
+${COMMON_RULES}
+- operating_kpis: choose the 5-8 operating metrics that are MOST MATERIAL for THIS specific industry and are actually disclosed (e.g. order book for capital goods, AUM/GNPA for lenders, occupancy/ARPOB for hospitals, same-store growth for retail, realisation per tonne for commodities). Do not force generic metrics.
+- cost_structure: each major cost head as % of revenue for the latest full fiscal year.
+
+Schema:
+{
+ "business": {
+   "one_line": "what the company does, in one line",
+   "description": "3-5 factual sentences",
+   "revenue_streams": [ { "stream": "", "note": "" } ],
+   "segment_mix": [ { "segment": "", "share": "", "period": "" } ],
+   "geographic_mix": [ { "region": "", "share": "" } ],
+   "customer_concentration": { "top_1": "", "top_5": "", "top_10": "" },
+   "supplier_concentration": "string or null",
+   "cost_structure": [ { "item": "", "pct_of_revenue": "", "period": "" } ],
+   "operating_kpis": [ { "metric": "", "values": [ { "period": "", "value": "" } ], "why_it_matters": "one line" } ],
+   "capacity_and_utilization": "string or null",
+   "employees": "string or null"
+ },
+ "industry": {
+   "market_size": "", "growth_cagr": "", "forecast": "",
+   "source_report": "e.g. CRISIL / F&S commissioned report name",
+   "is_commissioned_report": true,
+   "key_drivers": [ "" ],
+   "competitive_landscape": "3-4 sentences on structure and key players",
+   "company_market_position": "share/rank claims made in the DRHP",
+   "regulatory_environment": "key regulations and policy exposure"
+ },
+ "management": {
+   "promoters": [ { "name": "", "background": "" } ],
+   "kmp": [ { "name": "", "role": "", "background": "" } ],
+   "notes": "anything notable — experience, prior ventures, family relationships"
+ },
+ "page_refs": { "business": "", "industry": "", "management": "" }
+}`;
+
+const P_DIL = `You are a data extraction engine working on an Indian DRHP. Extract diligence data. Look in: Outstanding Litigation and Material Developments, Financial Indebtedness, Related Party Transactions (in Restated Financials annexures), Risk Factors, Our Group Companies, auditor reports/annexures.
+${COMMON_RULES}
+
+Schema:
+{
+ "litigation": {
+   "summary": [ { "category": "e.g. Criminal — against Company / Tax — against Promoters", "count": 0, "amount": "" } ],
+   "material_cases": [ { "party": "", "forum": "", "amount": "", "description": "one line" } ],
+   "total_amount_involved": "aggregate quantum if stated"
+ },
+ "contingent_liabilities": { "total": "", "items": [ { "item": "", "amount": "" } ] },
+ "related_party_transactions": {
+   "by_year": [ { "period": "", "total_amount": "", "pct_of_revenue": "" } ],
+   "material": [ { "counterparty": "", "relationship": "", "nature": "", "amount": "", "period": "" } ]
+ },
+ "indebtedness": {
+   "total_outstanding": "",
+   "facilities": [ { "lender": "", "type": "", "sanctioned": "", "outstanding": "", "interest_rate": "", "security": "", "key_covenants": "" } ],
+   "notes": "prepayment penalties, restrictive covenants worth knowing"
+ },
+ "auditor_matters": { "qualifications": [ "" ], "emphasis_of_matter": [ "" ], "caro_or_other_remarks": [ "" ] },
+ "group_companies": [ { "name": "", "note": "", "negative_net_worth": false } ],
+ "top_risk_factors": [ { "title": "", "gist": "one line" } ],
+ "page_refs": { "litigation": "", "indebtedness": "", "rpt": "" }
+}`;
+
+
+const P_MAP = `You are a data extraction engine working on an Indian DRHP. Do NOT extract financial or business content. Your only job is to build a MAP of the document: where each chapter sits, and where a reader would find specific topics.
+Use the printed table of contents and the printed page numbers at the foot of each page — not your own count of PDF pages.
+Return ONLY one valid JSON object. Use null when something is genuinely absent. Never invent a page number; omit the entry instead.
+
+{
+ "pdf_page_of_printed_page_1": "the PDF page number on which printed page 1 appears, as an integer, or null if you cannot tell",
+ "total_printed_pages": "integer or null",
+ "contents": [ { "chapter": "chapter title exactly as printed", "start_page": 0, "end_page": 0 } ],
+ "financial_statements_index": [ { "item": "e.g. Restated statement of assets and liabilities / Restated cash flow statement / Notes - related party disclosures", "pages": "e.g. 318-320" } ],
+ "gap_index": [ { "topic": "", "where": "chapter title it sits in", "pages": "e.g. 268-274", "what_you_will_find": "one line" } ]
+}
+
+For gap_index, look for these topics specifically and include every one you can locate, skipping any that are absent:
+- Key Performance Indicators (the KPI table in Basis for Offer Price)
+- Price of acquisition of shares by promoters and selling shareholders in the last 18 months / 3 years
+- Schedule of deployment of Net Proceeds by fiscal year
+- Employee stock option plan: pool size, outstanding options, dilution
+- Subsidiary-wise or joint-venture financial information
+- Restated statement of changes in equity
+- Reconciliation of the effective tax rate
+- Related party balances outstanding at each period end (as distinct from transactions during the period)
+- Capacity and capacity utilisation tables, plant by plant
+- Order book / committed pipeline
+- Full list of risk factors
+- Government approvals and licences
+- Material contracts and documents for inspection
+- Intellectual property
+- Full list of promoter group entities and group companies
+- Restated adjustments and the auditor's examination report
+- Working capital: basis of estimation and holding-period assumptions
+- Foreign exchange exposure and hedging policy
+- Material developments after the last balance sheet date
+- The commissioned industry report: methodology and limitations
+- Basis for Offer Price: qualitative and quantitative factors
+- Statement of tax benefits
+- Details of the objects: bank sanction letters, quotations, cost breakdown`;
+
+const P_ANA = `You are an experienced, skeptical sell-side equity research analyst covering Indian capital markets. Below is structured data extracted from a DRHP. Treat those numbers as ground truth — do not recalculate them. Your job is judgment: cross-check management claims against the historical numbers, flag where narrative exceeds evidence, and be specific.
+
+Return ONLY one valid JSON object (no markdown, no backticks):
+{
+ "verdict": "compelling|cautious|avoid",
+ "verdict_reason": "one crisp sentence",
+ "overview_summary": "4-6 sentences a portfolio manager could read in 30 seconds — what the company does, growth and profitability trajectory, why it is raising money, and the one thing that decides this IPO",
+ "industry_view": { "narrative": "4-6 sentences", "tailwinds": [ "" ], "headwinds": [ "" ] },
+ "business_view": {
+   "model_narrative": "how the company actually makes money and where the operating leverage is",
+   "moat": "honest assessment of competitive advantage, or the absence of one",
+   "growth_drivers_check": "management's stated growth drivers vs what the historical record supports"
+ },
+ "management_view": "promoter/KMP quality, governance signals, RPT pattern — builder or extractor?",
+ "risk_scorecard": [
+   { "criteria": "Industry Growth", "rating": "Low|Mid|High", "comment": "" },
+   { "criteria": "Regulatory Risk", "rating": "Low|Mid|High", "comment": "" },
+   { "criteria": "Entry Barriers", "rating": "Low|Mid|High", "comment": "" },
+   { "criteria": "Competitive Intensity", "rating": "Low|Mid|High", "comment": "" },
+   { "criteria": "Customer Concentration", "rating": "Low|Mid|High", "comment": "" },
+   { "criteria": "Financial Leverage", "rating": "Low|Mid|High", "comment": "" },
+   { "criteria": "Governance & Related Parties", "rating": "Low|Mid|High", "comment": "" },
+   { "criteria": "Earnings Quality", "rating": "Low|Mid|High", "comment": "" }
+ ],
+ "red_flags": [ { "flag": "specific, with numbers", "severity": "high|medium|low", "category": "financial|governance|legal|business|related-party", "evidence": "the data point(s) behind it" } ],
+ "thesis": {
+   "bull_case": "2-3 sentences — what must go right",
+   "bear_case": "2-3 sentences — what breaks it",
+   "key_monitorables": [ "" ],
+   "analyst_verdict": "one honest sentence: compelling story or stretched narrative?"
+ }
+}
+Ratings are RISK levels: Low = favourable. Aim for 6-12 red_flags with evidence; do not pad with generic risks.
+
+EXTRACTED DATA:
+`;
+
+/* ═══════════ PIPELINE ═══════════ */
+function newPipeline() {
+  const steps = {};
+  STEP_DEFS.forEach(s => steps[s.key] = { status: 'pending', data: null, model: null, err: null });
+  /* every runner must have a slot, even if the step list and the runners drift apart */
+  ['upload', 'map', 'fin', 'cap', 'biz', 'dil', 'ana'].forEach(k => {
+    if (!steps[k]) steps[k] = { status: 'pending', data: null, model: null, err: null };
+  });
+  return { steps };
+}
+function renderProgress() {
+  if (!pipeline) return;
+  $('progressSec').classList.add('show');
+  $('progSteps').innerHTML = STEP_DEFS.map(s => {
+    const st = pipeline.steps[s.key];
+    const retry = st.status === 'fail' && s.key !== 'upload' ? ` <span class="retry" data-step="${s.key}">retry</span>` : '';
+    const tok = st.usage ? (st.usage.promptTokenCount || st.usage.prompt_token_count || 0) : 0;
+    const tokTxt = tok ? ' · ' + Math.round(tok / 1000) + 'k in' : '';
+    const blind = (tok && tok < 20000 && s.key !== 'ana') ? ' <span style="color:var(--red)">PDF not seen</span>' : '';
+    return `<span class="pstep ${st.status === 'pending' ? '' : st.status}"><span class="dot"></span>${s.label}${st.model ? ' · ' + escHtml(st.model.replace('gemini-', '')) : ''}${tokTxt}${blind}${retry}</span>`;
+  }).join('');
+  document.querySelectorAll('.pstep .retry').forEach(el => el.addEventListener('click', () => retryStep(el.dataset.step)));
+}
+function progNote(msg) { $('progNote').textContent = msg || ''; }
+function renderDiagnostics() {
+  if (!pipeline) return;
+  const keys = ['fin', 'cap', 'biz', 'dil', 'ana'];
+  const rows = keys.filter(k => pipeline.steps[k].usage || pipeline.steps[k].raw).map(k => {
+    const st = pipeline.steps[k];
+    const u = st.usage || {};
+    const pt = u.promptTokenCount || u.prompt_token_count || 0;
+    const ct = u.candidatesTokenCount || u.candidates_token_count || 0;
+    return `<tr><td>${k}</td><td class="num">${pt.toLocaleString()}</td><td class="num">${ct.toLocaleString()}</td><td><span class="rawlink" data-step="${k}">view raw</span></td></tr>`;
+  }).join('');
+  const el = $('diagTable');
+  if (!el) return;
+  el.innerHTML = rows
+    ? `<table class="val-table"><thead><tr><th>Step</th><th class="num">Input tokens</th><th class="num">Output tokens</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+       <div class="narrative" style="font-size:12px;color:var(--text-dim)">A 400-page DRHP is roughly 300,000-800,000 input tokens. Anything under ~20,000 means the model answered without the document.</div>`
+    : '';
+  document.querySelectorAll('.rawlink').forEach(a => a.addEventListener('click', () => {
+    const st = pipeline.steps[a.dataset.step];
+    $('rawOut').textContent = (st.raw || '(no raw text captured)').slice(0, 6000);
+  }));
+}
+
+function saveDraft() {
+  try {
+    const d = {};
+    ['map', 'fin', 'cap', 'biz', 'dil', 'ana'].forEach(k => { if (pipeline.steps[k].data) d[k] = pipeline.steps[k].data; });
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ ts: nowTs(), name: pdfFile ? pdfFile.name : '', d }));
+  } catch (e) {}
+}
+
+/* The map is handed to later calls so they know which pages each chapter occupies. */
+function mapContext() {
+  const m = pipeline && pipeline.steps.map && pipeline.steps.map.data;
+  if (!m || !m.contents || !m.contents.length) return null;
+  const lines = m.contents.map(c => `${c.chapter}: pp. ${c.start_page}-${c.end_page}`).join('\n');
+  return { text: 'For reference, this document\'s printed table of contents is below. Use it to locate the sections you need and to give accurate page_refs. Page numbers you report must be the PRINTED page numbers used here.\n\n' + lines };
+}
+
+async function runMapStep(apiKey) {
+  const st = pipeline.steps.map;
+  st.status = 'running'; st.err = null; renderProgress();
+  const pdfPart = await ensurePdfPart(apiKey, progNote);
+  const r = await callWithFallback(apiKey, [pdfPart, { text: P_MAP }], { temperature: 0 },
+    m => { st.model = m; renderProgress(); });
+  st.data = r.json; st.model = r.model; st.usage = r.usage; st.raw = r.raw; st.status = 'done';
+  renderProgress(); renderDiagnostics(); saveDraft();
+}
+
+async function runExtractionStep(key, prompt, apiKey) {
+  const st = pipeline.steps[key];
+  st.status = 'running'; st.err = null; renderProgress();
+  const pdfPart = await ensurePdfPart(apiKey, progNote);
+  const parts = [pdfPart];
+  const mc = mapContext();
+  if (mc) parts.push(mc);
+  parts.push({ text: prompt });
+  const r = await callWithFallback(apiKey, parts, { temperature: 0.1 },
+    m => { st.model = m; renderProgress(); });
+  st.data = r.json; st.model = r.model; st.usage = r.usage; st.raw = r.raw; st.status = 'done';
+  renderProgress(); renderDiagnostics(); saveDraft();
+}
+async function runAnalysisStep(apiKey) {
+  const st = pipeline.steps.ana;
+  st.status = 'running'; st.err = null; renderProgress();
+  const ctx = {
+    financials: pipeline.steps.fin.data,
+    capital_and_issue: pipeline.steps.cap.data,
+    business_and_industry: pipeline.steps.biz.data,
+    diligence: pipeline.steps.dil.data
+  };
+  const r = await callWithFallback(apiKey, [{ text: P_ANA + JSON.stringify(ctx) }], { temperature: 0.3 },
+    m => { st.model = m; renderProgress(); });
+  st.data = r.json; st.model = r.model; st.usage = r.usage; st.raw = r.raw; st.status = 'done';
+  renderProgress(); renderDiagnostics(); saveDraft();
+}
+
+const STEP_RUNNERS = {
+  map: k => runMapStep(k),
+  fin: k => runExtractionStep('fin', P_FIN, k),
+  cap: k => runExtractionStep('cap', P_CAP, k),
+  biz: k => runExtractionStep('biz', P_BIZ, k),
+  dil: k => runExtractionStep('dil', P_DIL, k),
+  ana: k => runAnalysisStep(k)
+};
+
+async function retryStep(key) {
+  clearErr();
+  const apiKey = $('apiKey').value.trim();
+  try {
+    await STEP_RUNNERS[key](apiKey);
+    maybeFinish();
+  } catch (e) {
+    pipeline.steps[key].status = 'fail'; pipeline.steps[key].err = e.message;
+    renderProgress(); showErr(STEP_DEFS.find(s => s.key === key).label + ' failed: ' + e.message);
+  }
+}
+
+function maybeFinish() {
+  const s = pipeline.steps;
+  if (['fin', 'cap', 'biz', 'dil', 'ana'].every(k => s[k].status === 'done')) {
+    const name = (s.fin.data && s.fin.data.company_name) || (pdfFile && pdfFile.name) || 'DRHP';
+    A = {
+      id: name.replace(/\s+/g, '_') + '_' + Date.now(),
+      name, ts: nowTs(), band: null,
+      fin: s.fin.data, cap: s.cap.data, biz: s.biz.data, dil: s.dil.data, ana: s.ana.data,
+      map: s.map.data || null,
+      pageOffset: (s.map.data && isNum(parseNum(s.map.data.pdf_page_of_printed_page_1)))
+        ? parseNum(s.map.data.pdf_page_of_printed_page_1) - 1 : null
+    };
+    saveToHistory(A);
+    progNote('Done. Analysis saved locally — reloading it later costs no API calls.');
+    renderAll();
+  } else if (['fin', 'cap', 'biz', 'dil'].every(k => s[k].status === 'done') && s.ana.status !== 'done' && s.ana.status !== 'running' && s.ana.status !== 'fail') {
+    retryStep('ana');
+  }
+}
+
+$('runBtn').addEventListener('click', async () => {
+  clearErr();
+  const apiKey = $('apiKey').value.trim();
+  if (!apiKey || !pdfFile) return;
+  $('runBtn').disabled = true;
+  pipeline = newPipeline();
+  $('results').classList.remove('show');
+  try {
+    pipeline.steps.upload.status = 'running'; renderProgress();
+    await ensurePdfPart(apiKey, progNote);
+    pipeline.steps.upload.status = 'done'; renderProgress();
+    progNote('Extracting — each step is one API call. Failed steps can be retried individually.');
+    try { await runMapStep(apiKey); }
+    catch (e) {
+      pipeline.steps.map.status = 'fail'; pipeline.steps.map.err = e.message; renderProgress();
+      progNote('Document map failed — the run continues without it, but page references will be weaker.');
+    }
+    for (const key of ['fin', 'cap', 'biz', 'dil']) {
+      try { await STEP_RUNNERS[key](apiKey); }
+      catch (e) { pipeline.steps[key].status = 'fail'; pipeline.steps[key].err = e.message; renderProgress(); }
+    }
+    const failed = ['fin', 'cap', 'biz', 'dil'].filter(k => pipeline.steps[k].status !== 'done');
+    if (failed.length) {
+      showErr('Some extraction steps failed — use the retry link on each. The analysis step runs automatically once all four are done.');
+    } else {
+      await STEP_RUNNERS.ana(apiKey).catch(e => {
+        pipeline.steps.ana.status = 'fail'; pipeline.steps.ana.err = e.message; renderProgress();
+        showErr('Analysis step failed: ' + e.message);
+      });
+    }
+    maybeFinish();
+  } catch (e) {
+    pipeline.steps.upload.status = 'fail'; renderProgress();
+    showErr(e.message);
+  } finally {
+    $('runBtn').disabled = false;
+  }
+});
+
+/* ═══════════ DERIVED METRICS ═══════════ */
+function arrGet(o, path) {
+  const v = path.split('.').reduce((a, k) => (a && a[k] !== undefined ? a[k] : null), o);
+  return Array.isArray(v) ? v : [];
+}
+function normFin(fin) {
+  /* pad/trim every array to periods length */
+  const P = (fin.periods || []).length || 3;
+  const fix = obj => { if (!obj) return; Object.keys(obj).forEach(k => {
+    if (Array.isArray(obj[k])) { while (obj[k].length < P) obj[k].push(null); obj[k] = obj[k].slice(0, P).map(v => isNum(v) ? v : (parseNum(v))); }
+  }); };
+  fix(fin.pnl); fix(fin.balance_sheet); fix(fin.cash_flow);
+  return fin;
+}
+function isStub(p) { return /\d+\s*m\b|month|stub|H1|Q[1-4]/i.test(p || ''); }
+
+function computeDerived(fin) {
+  fin = normFin(fin || {});
+  const P = (fin.periods || []).length;
+  const pnl = fin.pnl || {}, bs = fin.balance_sheet || {}, cf = fin.cash_flow || {};
+  const g = (o, k, i) => { const a = o[k]; const v = a && a[i]; return isNum(v) ? v : null; };
+  const D = { periods: fin.periods || [], stubIdx: [] };
+  D.periods.forEach((p, i) => { if (isStub(p)) D.stubIdx.push(i); });
+  const per = fnName => Array.from({ length: P }, (_, i) => fnName(i));
+  const nz = v => isNum(v) && v !== 0;
+
+  D.ebitda = per(i => {
+    const pbt = g(pnl, 'pbt', i), dep = g(pnl, 'depreciation', i), fc = g(pnl, 'finance_costs', i), oi = g(pnl, 'other_income', i);
+    if (pbt === null) return null;
+    return pbt + (dep || 0) + (fc || 0) - (oi || 0);
+  });
+  D.ebitda_margin = per(i => { const r = g(pnl, 'revenue_operations', i); return nz(r) && isNum(D.ebitda[i]) ? D.ebitda[i] / r : null; });
+  D.pat_margin    = per(i => { const r = g(pnl, 'revenue_operations', i), p = g(pnl, 'pat', i); return nz(r) && isNum(p) ? p / r : null; });
+  D.gross_margin  = per(i => {
+    const r = g(pnl, 'revenue_operations', i);
+    if (!nz(r)) return null;
+    const cm = g(pnl, 'cost_materials', i), pu = g(pnl, 'purchases_stock_in_trade', i), ci = g(pnl, 'changes_inventories', i);
+    if (cm === null && pu === null) return null;
+    return (r - (cm || 0) - (pu || 0) - (ci || 0)) / r;
+  });
+  const avg = (o, k, i) => {
+    const cur = g(o, k, i);
+    if (cur === null) return null;
+    if (i === 0 || D.stubIdx.includes(i)) return cur;
+    const prev = g(o, k, i - 1);
+    return prev === null ? cur : (cur + prev) / 2;
+  };
+  D.borrowings = per(i => {
+    const a = g(bs, 'borrowings_noncurrent', i), b = g(bs, 'borrowings_current', i), l = g(bs, 'lease_liabilities', i);
+    if (a === null && b === null && l === null) return null;
+    return (a || 0) + (b || 0) + (l || 0);
+  });
+  D.net_debt = per(i => isNum(D.borrowings[i]) ? D.borrowings[i] - (g(bs, 'cash_and_bank', i) || 0) : null);
+  D.roe  = per(i => { const p = g(pnl, 'pat', i), e = avg(bs, 'total_equity', i); return isNum(p) && nz(e) ? p / e : null; });
+  D.roce = per(i => {
+    const pbt = g(pnl, 'pbt', i), fc = g(pnl, 'finance_costs', i);
+    const e = avg(bs, 'total_equity', i);
+    const cur = isNum(D.borrowings[i]) ? D.borrowings[i] : 0;
+    const prevB = i > 0 && isNum(D.borrowings[i - 1]) ? D.borrowings[i - 1] : cur;
+    const cap = (e || 0) + ((i === 0 || D.stubIdx.includes(i)) ? cur : (cur + prevB) / 2);
+    return isNum(pbt) && cap > 0 ? (pbt + (fc || 0)) / cap : null;
+  });
+  D.roa = per(i => { const p = g(pnl, 'pat', i), a = avg(bs, 'total_assets', i); return isNum(p) && nz(a) ? p / a : null; });
+  D.de  = per(i => { const e = g(bs, 'total_equity', i); return isNum(D.borrowings[i]) && nz(e) ? D.borrowings[i] / e : null; });
+  D.nd_ebitda = per(i => isNum(D.net_debt[i]) && nz(D.ebitda[i]) ? D.net_debt[i] / D.ebitda[i] : null);
+  D.int_cover = per(i => { const fc = g(pnl, 'finance_costs', i); return nz(fc) && isNum(D.ebitda[i]) ? D.ebitda[i] / fc : null; });
+  const days = (o, k) => per(i => {
+    if (D.stubIdx.includes(i)) return null;
+    const r = g(pnl, 'revenue_operations', i), v = g(o, k, i);
+    return nz(r) && isNum(v) ? v / r * 365 : null;
+  });
+  D.recv_days = days(bs, 'trade_receivables');
+  D.inv_days  = days(bs, 'inventories');
+  D.pay_days  = days(bs, 'trade_payables');
+  D.ccc = per(i => (isNum(D.recv_days[i]) && isNum(D.inv_days[i]) && isNum(D.pay_days[i])) ? D.recv_days[i] + D.inv_days[i] - D.pay_days[i] : null);
+  D.asset_turn = per(i => { const r = g(pnl, 'revenue_operations', i), a = avg(bs, 'total_assets', i); return D.stubIdx.includes(i) ? null : (nz(a) && isNum(r) ? r / a : null); });
+  D.capex_pct = per(i => { const r = g(pnl, 'revenue_operations', i), c = g(cf, 'capex_ppe_purchase', i); return nz(r) && isNum(c) ? c / r : null; });
+  D.cfo_pat = per(i => { const p = g(pnl, 'pat', i), c = g(cf, 'cfo', i); return nz(p) && isNum(c) ? c / p : null; });
+  D.fcf = per(i => { const c = g(cf, 'cfo', i), x = g(cf, 'capex_ppe_purchase', i); return isNum(c) ? c - (x || 0) : null; });
+  D.cwip_nb = per(i => { const w = g(bs, 'cwip', i), p = g(bs, 'ppe_net', i); return nz(p) && isNum(w) ? w / p : null; });
+
+  /* CAGRs over full fiscal years only */
+  const fyIdx = D.periods.map((p, i) => i).filter(i => !D.stubIdx.includes(i));
+  const cagr = key => {
+    if (fyIdx.length < 2) return null;
+    const a = g(pnl, key, fyIdx[0]), b = g(pnl, key, fyIdx[fyIdx.length - 1]);
+    const yrs = fyIdx.length - 1;
+    return (isNum(a) && a > 0 && isNum(b) && b > 0) ? Math.pow(b / a, 1 / yrs) - 1 : null;
+  };
+  D.rev_cagr = cagr('revenue_operations');
+  D.pat_cagr = cagr('pat');
+  D.ebitda_cagr = (() => {
+    if (fyIdx.length < 2) return null;
+    const a = D.ebitda[fyIdx[0]], b = D.ebitda[fyIdx[fyIdx.length - 1]];
+    return (isNum(a) && a > 0 && isNum(b) && b > 0) ? Math.pow(b / a, 1 / (fyIdx.length - 1)) - 1 : null;
+  })();
+  D.lastFy = fyIdx.length ? fyIdx[fyIdx.length - 1] : P - 1;
+
+  /* Tie-outs */
+  D.tie = { bs: [], cf: [] };
+  for (let i = 0; i < P; i++) {
+    const ta = g(bs, 'total_assets', i), tl = g(bs, 'total_equity_and_liabilities', i);
+    D.tie.bs.push((isNum(ta) && isNum(tl)) ? (Math.abs(ta - tl) <= Math.max(Math.abs(ta) * 0.005, 1) ? 'pass' : 'fail') : 'na');
+    const cfo = g(cf, 'cfo', i), cfi = g(cf, 'cfi', i), cff = g(cf, 'cff', i), nc = g(cf, 'net_change_in_cash', i);
+    D.tie.cf.push((isNum(cfo) && isNum(cfi) && isNum(cff) && isNum(nc)) ? (Math.abs(cfo + cfi + cff - nc) <= Math.max(Math.abs(nc) * 0.02, 1) ? 'pass' : 'fail') : 'na');
+  }
+  return D;
+}
+
+
+/* ═══════════ PAGE REFERENCES ═══════════ */
+function parsePages(s) {
+  if (!s) return [];
+  const m = String(s).match(/\d{1,4}/g);
+  return m ? m.map(Number).filter(n => n > 0 && n < 3000) : [];
+}
+function chapterFor(page) {
+  const c = (A.map && A.map.contents) || [];
+  for (const ch of c) {
+    const a = parseNum(ch.start_page), b = parseNum(ch.end_page);
+    if (isNum(a) && isNum(b) && page >= a && page <= b) return ch.chapter || '';
+  }
+  return null;
+}
+function pdfPageOf(printed) {
+  const off = isNum(A.pageOffset) ? A.pageOffset : null;
+  return off === null ? null : printed + off;
+}
+/* Renders a page reference with the PDF page alongside, and flags refs that
+   fall outside the chapter they should belong to. */
+function refHtml(ref, expect) {
+  if (!ref) return '';
+  const pages = parsePages(ref);
+  if (!pages.length) return `<span class="pageref">${escHtml(ref)}</span>`;
+  const lo = Math.min.apply(null, pages), hi = Math.max.apply(null, pages);
+  let pdfTxt = '';
+  if (isNum(A.pageOffset)) {
+    const a = pdfPageOf(lo), b = pdfPageOf(hi);
+    pdfTxt = ' · PDF ' + (a === b ? a : a + '–' + b);
+  }
+  let warn = '';
+  const contents = (A.map && A.map.contents) || [];
+  if (contents.length) {
+    const ch = chapterFor(lo);
+    if (!ch) warn = '<span class="tie-badge fail" style="margin-left:8px">page not inside any chapter — check before citing</span>';
+    else if (expect && !(new RegExp(expect, 'i')).test(ch)) warn = `<span class="tie-badge fail" style="margin-left:8px">falls in "${escHtml(ch)}" — check before citing</span>`;
+  }
+  return `<span class="pageref">${escHtml(ref)}${pdfTxt}</span>${warn}`;
+}
+
+/* ═══════════ RENDER: SHELL ═══════════ */
+function renderAll() {
+  if (!A) return;
+  A.derived = computeDerived(A.fin);
+  $('results').classList.add('show');
+  $('coName').textContent = A.name || '—';
+  const v = (A.ana && A.ana.verdict) || '';
+  const vc = $('verdictChip');
+  vc.textContent = v ? v + ' — ' + (A.ana.verdict_reason || '') : '';
+  vc.className = 'chip ' + v;
+  vc.style.display = v ? '' : 'none';
+  $('unitChip').textContent = A.fin && A.fin.currency_unit ? 'All figures in ' + A.fin.currency_unit : '';
+  $('consolChip').textContent = A.fin ? (A.fin.is_consolidated ? 'Restated consolidated' : 'Restated standalone') : '';
+  $('coSub').textContent = (A.biz && A.biz.business && A.biz.business.one_line) || '';
+  const flags = (A.ana && A.ana.red_flags) || [];
+  const fb = $('flagBadge');
+  fb.style.display = flags.length ? '' : 'none';
+  fb.textContent = flags.length;
+  renderOverview();
+  renderFinancials();
+  renderBusiness();
+  renderDiligence();
+  renderWhereToLook();
+}
+function secBlock(label, inner, pageref, expect) {
+  return `<div class="section-block"><div class="section-label">${escHtml(label)}${pageref ? refHtml(pageref, expect) : ''}</div>${inner}</div>`;
+}
+function kvTable(headers, rows) {
+  if (!rows.length) return '<div class="narrative">Not disclosed in the DRHP.</div>';
+  return `<table class="val-table"><thead><tr>${headers.map(h => `<th${h.num ? ' class="num"' : ''}>${escHtml(h.t)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`;
+}
+
+/* ═══════════ OVERVIEW ═══════════ */
+function tile(k, v, cls, s) {
+  return `<div class="mtile"><div class="k">${escHtml(k)}</div><div class="v ${cls || ''}">${v}</div>${s ? `<div class="s">${escHtml(s)}</div>` : ''}</div>`;
+}
+function renderOverview() {
+  const D = A.derived, fin = A.fin || {}, cap = A.cap || {}, ana = A.ana || {}, dil = A.dil || {};
+  const i = D.lastFy;
+  const lastLabel = D.periods[i] || '';
+  const pnl = fin.pnl || {}, cf = fin.cash_flow || {};
+  const unit = fin.currency_unit || '';
+  let html = '';
+
+  if (ana.overview_summary) html += secBlock('Snapshot', `<div class="narrative">${escHtml(ana.overview_summary)}</div>`);
+
+  /* Issue structure */
+  const iss = cap.issue || {};
+  const freshCr = parseAmountToCr(iss.fresh_issue_amount);
+  const ofsCr = parseAmountToCr(iss.ofs_amount_or_shares);
+  let freshPct = 50;
+  if (isNum(freshCr) && isNum(ofsCr) && (freshCr + ofsCr) > 0) freshPct = Math.round(freshCr / (freshCr + ofsCr) * 100);
+  else if (isNum(freshCr) && !isNum(ofsCr)) freshPct = 100;
+  else if (!isNum(freshCr) && isNum(ofsCr)) freshPct = 0;
+  const uop = (iss.use_of_proceeds || []).map(u => {
+    const warn = /debt|repay|general corporate/i.test(u.purpose || '');
+    return `<tr${warn ? ' class="warn-row"' : ''}><td>${escHtml(u.purpose)}</td><td class="num">${escHtml(u.amount)}</td><td class="num">${escHtml(u.pct_of_fresh)}</td></tr>`;
+  });
+  html += secBlock('Offer structure',
+    `<div class="issue-bar"><div class="fresh-seg" style="width:${freshPct}%">${freshPct >= 12 ? freshPct + '%' : ''}</div><div class="ofs-seg" style="width:${100 - freshPct}%">${(100 - freshPct) >= 12 ? (100 - freshPct) + '%' : ''}</div></div>
+     <div class="issue-bar-legend">
+       <span><span class="dot" style="background:var(--gold)"></span>Fresh — ${escHtml(iss.fresh_issue_amount || '—')}</span>
+       <span><span class="dot" style="background:var(--text-dim)"></span>OFS — ${escHtml(iss.ofs_amount_or_shares || '—')}</span>
+       <span>Total: ${escHtml(iss.total_issue_size || '—')}</span>
+       <span>Face value: ${escHtml(iss.face_value || '—')}</span>
+     </div>
+     ${uop.length ? kvTable([{t:'Use of fresh proceeds'},{t:'Amount',num:1},{t:'% of fresh',num:1}], uop) : ''}`,
+    (cap.page_refs || {}).issue, 'offer|objects|summary');
+
+  /* Metric grid */
+  const gv = (o, k) => { const a = o[k]; const v = a && a[i]; return isNum(v) ? v : null; };
+  const rev = gv(pnl, 'revenue_operations'), pat = gv(pnl, 'pat');
+  const sh = cap.shareholding || {};
+  const rptYear = ((dil.related_party_transactions || {}).by_year || []).slice(-1)[0];
+  const tiles = [
+    tile('Revenue · ' + lastLabel, fmtNum(rev), '', unit),
+    tile('Revenue CAGR', fmtPct(D.rev_cagr), isNum(D.rev_cagr) ? (D.rev_cagr > 0.15 ? 'pos' : '') : '', 'full FYs shown'),
+    tile('EBITDA margin', fmtPct(D.ebitda_margin[i]), '', lastLabel),
+    tile('PAT margin', fmtPct(D.pat_margin[i]), '', lastLabel),
+    tile('PAT CAGR', fmtPct(D.pat_cagr), isNum(D.pat_cagr) ? (D.pat_cagr > 0.15 ? 'pos' : '') : ''),
+    tile('ROE', fmtPct(D.roe[i]), isNum(D.roe[i]) ? (D.roe[i] > 0.15 ? 'pos' : '') : ''),
+    tile('ROCE', fmtPct(D.roce[i]), isNum(D.roce[i]) ? (D.roce[i] > 0.15 ? 'pos' : '') : ''),
+    tile('Debt / Equity', fmtX(D.de[i]), isNum(D.de[i]) && D.de[i] > 1 ? 'warn' : ''),
+    tile('Net debt / EBITDA', fmtX(D.nd_ebitda[i]), isNum(D.nd_ebitda[i]) && D.nd_ebitda[i] > 3 ? 'warn' : ''),
+    tile('Interest cover', fmtX(D.int_cover[i])),
+    tile('CFO / PAT', fmtX(D.cfo_pat[i]), isNum(D.cfo_pat[i]) && D.cfo_pat[i] < 0.6 ? 'warn' : '', lastLabel),
+    tile('FCF · ' + lastLabel, fmtNum(D.fcf[i]), isNum(D.fcf[i]) ? (D.fcf[i] < 0 ? 'neg' : 'pos') : '', unit),
+    tile('Capex / revenue', fmtPct(D.capex_pct[i])),
+    tile('Cash conversion cycle', fmtDays(D.ccc[i])),
+    tile('Promoter pre → post', `${escHtml(sh.promoter_pre_ipo_pct || '—')} → ${escHtml(sh.promoter_post_ipo_pct || '—')}`),
+    tile('RPT % of revenue', rptYear ? escHtml(rptYear.pct_of_revenue || rptYear.total_amount || '—') : '—', '', rptYear ? rptYear.period : ''),
+    tile('Contingent liabilities', escHtml((dil.contingent_liabilities || {}).total || '—')),
+    tile('Litigation amount', escHtml((dil.litigation || {}).total_amount_involved || '—'))
+  ];
+  html += secBlock('Key metrics', `<div class="mgrid">${tiles.join('')}</div>`);
+
+  /* Price band */
+  html += secBlock('Implied valuation at price band', bandPanelHtml());
+
+  /* Peer comparison */
+  const pc = cap.peer_comparison || {};
+  const peerRow = (p, cls) => `<tr class="${cls || ''}"><td>${escHtml(p.name)}</td><td class="num">${escHtml(p.revenue || '—')}</td><td class="num">${escHtml(p.eps || '—')}</td><td class="num">${escHtml(p.pe || '—')}</td><td class="num">${escHtml(p.ronw_pct || '—')}</td><td class="num">${escHtml(p.nav_per_share || '—')}</td></tr>`;
+  const peers = pc.peers || [];
+  let peerRows = [];
+  if (pc.company_row) peerRows.push(peerRow(pc.company_row, 'own-row'));
+  peerRows = peerRows.concat(peers.map(p => peerRow(p)));
+  const medPe = median(peers.map(p => parseNum(p.pe)));
+  const medRonw = median(peers.map(p => parseNum(p.ronw_pct)));
+  if (peers.length) peerRows.push(`<tr class="median-row"><td>Peer median</td><td class="num">—</td><td class="num">—</td><td class="num">${medPe !== null ? medPe.toFixed(1) : '—'}</td><td class="num">${medRonw !== null ? medRonw.toFixed(1) + '%' : '—'}</td><td class="num">—</td></tr>`);
+  html += secBlock('Peer comparison — Basis for Offer Price',
+    (peerRows.length ? kvTable([{t:'Company'},{t:'Revenue',num:1},{t:'EPS',num:1},{t:'P/E',num:1},{t:'RoNW %',num:1},{t:'NAV/share',num:1}], peerRows) : '<div class="narrative">Not disclosed.</div>')
+    + (pc.source_note ? `<div class="narrative" style="font-size:12px;color:var(--text-dim)">${escHtml(pc.source_note)}. Peer P/E for a company with no market price yet — the company row P/E only exists once a band is set.</div>` : ''),
+    (cap.page_refs || {}).basis_for_offer_price, 'basis for offer price|offer price');
+
+  /* Shareholding & sellers */
+  const topSh = (sh.top_shareholders_pre || []).map(s => `<tr><td>${escHtml(s.name)}</td><td>${escHtml(s.category)}</td><td class="num">${escHtml(s.pct)}</td></tr>`);
+  const sellers = ((cap.ofs_sellers) || []).map(s => `<tr><td>${escHtml(s.name)}</td><td>${escHtml(s.type)}</td><td class="num">${escHtml(s.shares_or_amount)}</td><td class="num">${escHtml(s.waca_per_share || '—')}</td><td class="num waca-mult" data-waca="${escHtml(s.waca_per_share || '')}">—</td></tr>`);
+  const waca = (cap.promoter_waca || []).map(w => `<tr><td>${escHtml(w.name)}</td><td class="num">${escHtml(w.waca_per_share)}</td></tr>`);
+  const plc = (cap.pre_ipo_placements_18m || []).map(p => `<tr><td>${escHtml(p.date)}</td><td>${escHtml(p.nature)}</td><td class="num">${escHtml(p.price_per_share)}</td><td>${escHtml(p.parties)}</td></tr>`);
+  html += secBlock('Shareholding, sellers & cost of acquisition',
+    `<div class="two-col">
+      <div>${kvTable([{t:'Top shareholders (pre-offer)'},{t:'Category'},{t:'%',num:1}], topSh)}</div>
+      <div>${kvTable([{t:'Promoter'},{t:'WACA / share',num:1}], waca)}</div>
+    </div>
+    <div class="section-label" style="margin-top:0.5rem">Selling in the OFS</div>
+    ${kvTable([{t:'Seller'},{t:'Type'},{t:'Size'},{t:'WACA',num:1},{t:'Cap price ÷ WACA',num:1}], sellers)}
+    <div class="section-label" style="margin-top:0.5rem">Pre-IPO issuances — last 18 months</div>
+    ${kvTable([{t:'Date'},{t:'Nature'},{t:'Price/share',num:1},{t:'Parties'}], plc)}`,
+    (cap.page_refs || {}).capital_structure, 'capital structure');
+
+  $('tab-overview').innerHTML = html;
+  wireBandPanel();
+}
+
+/* ═══════════ PRICE BAND ═══════════ */
+function bandDefaults() {
+  const D = A.derived, fin = A.fin || {}, cap = A.cap || {};
+  const f = unitToCrFactor(fin.currency_unit);
+  const i = D.lastFy;
+  const gv = (o, k) => { const a = (o || {})[k]; const v = a && a[i]; return isNum(v) ? v * f : null; };
+  const shares = parseNum((cap.pre_issue_shares_outstanding || '')); /* absolute count */
+  const repay = (cap.issue && (cap.issue.use_of_proceeds || []).filter(u => /debt|repay/i.test(u.purpose || '')).map(u => parseAmountToCr(u.amount)).filter(isNum).reduce((a, b) => a + b, 0)) || 0;
+  return {
+    freshCr: parseAmountToCr((cap.issue || {}).fresh_issue_amount),
+    preSharesCr: isNum(shares) ? shares / 1e7 : null,
+    patCr: gv(fin.pnl, 'pat'),
+    revCr: gv(fin.pnl, 'revenue_operations'),
+    ebitdaCr: isNum(D.ebitda[i]) ? D.ebitda[i] * f : null,
+    equityCr: gv(fin.balance_sheet, 'total_equity'),
+    debtCr: isNum(D.borrowings[i]) ? D.borrowings[i] * f : null,
+    cashCr: gv(fin.balance_sheet, 'cash_and_bank'),
+    repayCr: repay || null
+  };
+}
+function bandPanelHtml() {
+  const b = (A.band && A.band.inputs) || {};
+  const d = bandDefaults();
+  const val = (k, dec) => b[k] !== undefined && b[k] !== null ? b[k] : (isNum(d[k]) ? +d[k].toFixed(dec === undefined ? 1 : dec) : '');
+  return `
+  <div class="narrative">A DRHP has no price — the band arrives ~5 days before the offer opens. Enter it here (or a scenario price) and the implied multiples compute locally, no API call. Assumption fields are pre-filled from the extraction (converted to ₹ crore) and editable.</div>
+  <div class="band-grid">
+    <div><label>Floor price ₹</label><input id="bandFloor" type="number" value="${A.band && A.band.floor || ''}"></div>
+    <div><label>Cap price ₹</label><input id="bandCap" type="number" value="${A.band && A.band.cap || ''}"></div>
+    <div><label>Fresh issue ₹ Cr</label><input id="bFresh" type="number" value="${val('freshCr')}"></div>
+    <div><label>Pre-issue shares (Cr)</label><input id="bShares" type="number" step="0.01" value="${val('preSharesCr', 2)}"></div>
+    <div><label>PAT ₹ Cr (latest FY)</label><input id="bPat" type="number" value="${val('patCr')}"></div>
+    <div><label>Revenue ₹ Cr</label><input id="bRev" type="number" value="${val('revCr')}"></div>
+    <div><label>EBITDA ₹ Cr</label><input id="bEbitda" type="number" value="${val('ebitdaCr')}"></div>
+    <div><label>Net worth ₹ Cr</label><input id="bEquity" type="number" value="${val('equityCr')}"></div>
+    <div><label>Total debt ₹ Cr</label><input id="bDebt" type="number" value="${val('debtCr')}"></div>
+    <div><label>Cash ₹ Cr</label><input id="bCash" type="number" value="${val('cashCr')}"></div>
+    <div><label>Debt repaid from proceeds ₹ Cr</label><input id="bRepay" type="number" value="${val('repayCr')}"></div>
+  </div>
+  <div class="band-check"><input type="checkbox" id="bRepayChk" ${A.band && A.band.useRepay ? 'checked' : ''}> <label for="bRepayChk">Reduce debt by the repayment amount when computing EV (post-money view)</label></div>
+  <button class="ghost-btn" id="bandCompute">Compute implied multiples</button>
+  <div id="bandOut" style="margin-top:1rem">${A.band && A.band.outHtml ? A.band.outHtml : ''}</div>`;
+}
+function wireBandPanel() {
+  const btn = $('bandCompute');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    const num = id => { const v = parseFloat($(id).value); return isFinite(v) ? v : null; };
+    const floor = num('bandFloor'), cap = num('bandCap');
+    const inp = { freshCr: num('bFresh'), preSharesCr: num('bShares'), patCr: num('bPat'), revCr: num('bRev'), ebitdaCr: num('bEbitda'), equityCr: num('bEquity'), debtCr: num('bDebt'), cashCr: num('bCash'), repayCr: num('bRepay') };
+    const useRepay = $('bRepayChk').checked;
+    if (!isNum(cap) && !isNum(floor)) { $('bandOut').innerHTML = '<div class="narrative">Enter at least one price.</div>'; return; }
+    const prices = [];
+    if (isNum(floor)) prices.push(['Floor ₹' + floor, floor]);
+    if (isNum(cap)) prices.push(['Cap ₹' + cap, cap]);
+    const rows = [];
+    const medPe = median((((A.cap || {}).peer_comparison || {}).peers || []).map(p => parseNum(p.pe)));
+    const line = (label, fn, fmt) => {
+      rows.push(`<tr><td>${escHtml(label)}</td>${prices.map(pp => `<td class="num">${fmt(fn(pp[1]))}</td>`).join('')}</tr>`);
+    };
+    const calc = price => {
+      const newShares = isNum(inp.freshCr) && price > 0 ? inp.freshCr / price : 0;
+      const postShares = (inp.preSharesCr || 0) + newShares;
+      const mcap = postShares * price;
+      const netProceeds = inp.freshCr || 0;
+      const debt = (inp.debtCr || 0) - (useRepay ? Math.min(inp.repayCr || 0, inp.debtCr || 0) : 0);
+      const ev = mcap + debt - ((inp.cashCr || 0) + (useRepay ? 0 : 0));
+      return { newShares, postShares, mcap, ev,
+        epsPost: postShares > 0 && isNum(inp.patCr) ? inp.patCr / postShares : null,
+        epsPre: (inp.preSharesCr || 0) > 0 && isNum(inp.patCr) ? inp.patCr / inp.preSharesCr : null,
+        pb: isNum(inp.equityCr) && (inp.equityCr + netProceeds) > 0 ? mcap / (inp.equityCr + netProceeds) : null };
+    };
+    const C = {}; prices.forEach(pp => C[pp[1]] = calc(pp[1]));
+    line('New shares issued (Cr)', p => C[p].newShares, v => fmtNum(v, 2));
+    line('Post-issue shares (Cr)', p => C[p].postShares, v => fmtNum(v, 2));
+    line('Implied market cap ₹ Cr', p => C[p].mcap, v => fmtNum(v, 0));
+    line('EV ₹ Cr', p => C[p].ev, v => fmtNum(v, 0));
+    line('EPS post-issue ₹', p => C[p].epsPost, v => fmtNum(v, 1));
+    line('P/E (post-issue)', p => isNum(C[p].epsPost) && C[p].epsPost > 0 ? p / C[p].epsPost : null, fmtX);
+    line('P/E (pre-issue EPS, as DRHP quotes it)', p => isNum(C[p].epsPre) && C[p].epsPre > 0 ? p / C[p].epsPre : null, fmtX);
+    line('P/B (post-money)', p => C[p].pb, fmtX);
+    line('EV / EBITDA', p => isNum(inp.ebitdaCr) && inp.ebitdaCr > 0 ? C[p].ev / inp.ebitdaCr : null, fmtX);
+    line('EV / Sales', p => isNum(inp.revCr) && inp.revCr > 0 ? C[p].ev / inp.revCr : null, fmtX);
+    if (medPe !== null) line('Premium / (discount) to peer median P/E', p => { const c = C[p]; return isNum(c.epsPost) && c.epsPost > 0 ? (p / c.epsPost) / medPe - 1 : null; }, fmtPct);
+    const out = `<table class="val-table"><thead><tr><th>Implied at band</th>${prices.map(pp => `<th class="num">${escHtml(pp[0])}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>
+    <div class="narrative" style="font-size:12px;color:var(--text-dim)">Fresh shares = fresh amount ÷ price, so the post-issue count differs at floor vs cap. The DRHP's own "Basis for Offer Price" quotes pre-issue EPS — both views shown. Peer median P/E from the peer table${medPe !== null ? ' (' + medPe.toFixed(1) + 'x)' : ''}.</div>`;
+    $('bandOut').innerHTML = out;
+    /* fill WACA multiples in the OFS table */
+    const capPrice = isNum(cap) ? cap : floor;
+    document.querySelectorAll('.waca-mult').forEach(td => {
+      const w = parseNum(td.dataset.waca);
+      td.textContent = (isNum(w) && w > 0 && isNum(capPrice)) ? (capPrice / w).toFixed(1) + 'x' : '—';
+    });
+    A.band = { floor, cap, inputs: inp, useRepay, outHtml: out };
+    saveToHistory(A);
+  });
+}
+
+
+/* ═══════════ WHERE TO LOOK ═══════════ */
+function renderWhereToLook() {
+  const m = A.map || {};
+  let html = '';
+
+  const off = isNum(A.pageOffset) ? A.pageOffset : '';
+  html += secBlock('Page calibration',
+    `<div class="narrative">A DRHP's printed page numbers do not match the PDF's own page count — there are usually twenty to forty pages of front matter first. Open the PDF, find the page printed as <strong>1</strong>, and enter which PDF page that is. Every reference in this tool then shows both numbers.</div>
+     <div class="band-grid" style="max-width:420px">
+       <div><label>PDF page showing printed page 1</label><input id="offsetInput" type="number" value="${isNum(A.pageOffset) ? A.pageOffset + 1 : ''}"></div>
+     </div>
+     <button class="ghost-btn" id="offsetApply">Apply</button>
+     ${m.pdf_page_of_printed_page_1 ? `<span class="chip info" style="margin-left:10px">Model's guess: PDF page ${escHtml(String(m.pdf_page_of_printed_page_1))} — confirm it yourself</span>` : ''}`);
+
+  const gi = m.gap_index || [];
+  if (gi.length) {
+    const rows = gi.map(g => {
+      const pages = parsePages(g.pages);
+      const pdf = (pages.length && isNum(A.pageOffset)) ? (pdfPageOf(Math.min.apply(null, pages)) + (pages.length > 1 ? '–' + pdfPageOf(Math.max.apply(null, pages)) : '')) : '—';
+      return `<tr><td>${escHtml(g.topic)}</td><td>${escHtml(g.where || '')}</td><td class="num">${escHtml(g.pages || '—')}</td><td class="num">${escHtml(String(pdf))}</td><td style="font-size:12px;color:var(--text-muted)">${escHtml(g.what_you_will_find || '')}</td></tr>`;
+    });
+    html += secBlock('Not extracted above — here is where to find it',
+      `<div class="narrative">These sections are deliberately left out of the analysis: pulling their contents would cost more of the model's limited writing space than they are worth on every run. What you get instead is a pointer. Open the page, read it yourself.</div>
+       ${kvTable([{t:'Topic'},{t:'Chapter'},{t:'Printed pp.',num:1},{t:'PDF pp.',num:1},{t:'What is there'}], rows)}`);
+  }
+
+  const fi = m.financial_statements_index || [];
+  if (fi.length) {
+    const rows = fi.map(f => {
+      const pages = parsePages(f.pages);
+      const pdf = (pages.length && isNum(A.pageOffset)) ? (pdfPageOf(Math.min.apply(null, pages)) + (pages.length > 1 ? '–' + pdfPageOf(Math.max.apply(null, pages)) : '')) : '—';
+      return `<tr><td>${escHtml(f.item)}</td><td class="num">${escHtml(f.pages || '—')}</td><td class="num">${escHtml(String(pdf))}</td></tr>`;
+    });
+    html += secBlock('Inside the restated financial statements', kvTable([{t:'Statement or note'},{t:'Printed pp.',num:1},{t:'PDF pp.',num:1}], rows));
+  }
+
+  const c = m.contents || [];
+  if (c.length) {
+    const rows = c.map(ch => {
+      const a = parseNum(ch.start_page), b = parseNum(ch.end_page);
+      const pdf = (isNum(a) && isNum(A.pageOffset)) ? pdfPageOf(a) + (isNum(b) ? '–' + pdfPageOf(b) : '') : '—';
+      return `<tr><td>${escHtml(ch.chapter)}</td><td class="num">${isNum(a) ? a : '—'}${isNum(b) ? '–' + b : ''}</td><td class="num">${escHtml(String(pdf))}</td><td class="num">${(isNum(a) && isNum(b)) ? (b - a + 1) : '—'}</td></tr>`;
+    });
+    html += secBlock('Chapter map' + (m.total_printed_pages ? ' — ' + escHtml(String(m.total_printed_pages)) + ' printed pages' : ''),
+      kvTable([{t:'Chapter'},{t:'Printed pp.',num:1},{t:'PDF pp.',num:1},{t:'Pages',num:1}], rows));
+  }
+
+  if (!c.length && !gi.length) {
+    html += secBlock('Document map', '<div class="narrative">The map step did not run or returned nothing. Re-run it from the progress panel — it is one API call and it also improves the page references on the other tabs.</div>');
+  }
+
+  $('tab-wheretolook').innerHTML = html;
+  const ap = $('offsetApply');
+  if (ap) ap.addEventListener('click', () => {
+    const v = parseFloat($('offsetInput').value);
+    A.pageOffset = isFinite(v) ? Math.round(v) - 1 : null;
+    if (storageWorks()) saveToHistory(A);
+    renderAll();
+  });
+}
+
+/* ═══════════ FINANCIALS TAB ═══════════ */
+const PNL_ROWS = [
+  ['revenue_operations', 'Revenue from operations'],
+  ['other_income', 'Other income'],
+  ['total_income', 'Total income', 'subtotal'],
+  ['cost_materials', 'Cost of materials consumed'],
+  ['purchases_stock_in_trade', 'Purchases of stock-in-trade'],
+  ['changes_inventories', 'Changes in inventories'],
+  ['employee_costs', 'Employee benefit expenses'],
+  ['finance_costs', 'Finance costs'],
+  ['depreciation', 'Depreciation & amortisation'],
+  ['other_expenses', 'Other expenses'],
+  ['total_expenses', 'Total expenses', 'subtotal'],
+  ['pbt', 'Profit before tax', 'subtotal'],
+  ['total_tax', 'Total tax'],
+  ['pat', 'Profit after tax', 'subtotal'],
+  ['eps_basic', 'EPS — basic ₹'],
+  ['eps_diluted', 'EPS — diluted ₹']
+];
+const BS_ROWS = [
+  ['_grp1', 'Equity & liabilities', 'grp'],
+  ['equity_share_capital', 'Equity share capital'],
+  ['other_equity', 'Other equity'],
+  ['total_equity', 'Total equity', 'subtotal'],
+  ['borrowings_noncurrent', 'Borrowings — non-current'],
+  ['borrowings_current', 'Borrowings — current'],
+  ['lease_liabilities', 'Lease liabilities'],
+  ['trade_payables', 'Trade payables'],
+  ['other_liabilities', 'Other liabilities'],
+  ['total_equity_and_liabilities', 'Total equity & liabilities', 'subtotal'],
+  ['_grp2', 'Assets', 'grp'],
+  ['ppe_net', 'Property, plant & equipment'],
+  ['cwip', 'Capital work-in-progress'],
+  ['intangibles_goodwill', 'Intangibles & goodwill'],
+  ['right_of_use_assets', 'Right-of-use assets'],
+  ['investments', 'Investments'],
+  ['inventories', 'Inventories'],
+  ['trade_receivables', 'Trade receivables'],
+  ['cash_and_bank', 'Cash & bank balances'],
+  ['other_assets', 'Other assets'],
+  ['total_assets', 'Total assets', 'subtotal']
+];
+const CF_ROWS = [
+  ['cfo', 'Cash flow from operations'],
+  ['cfi', 'Cash flow from investing'],
+  ['cff', 'Cash flow from financing'],
+  ['net_change_in_cash', 'Net change in cash', 'subtotal'],
+  ['capex_ppe_purchase', 'Capex — purchase of PP&E'],
+  ['interest_paid', 'Interest paid'],
+  ['income_tax_paid', 'Income tax paid']
+];
+function stmtTable(rowsDef, obj, D, calcRows) {
+  const P = D.periods.length;
+  let head = '<th>Line item</th>' + D.periods.map((p, i) => `<th${D.stubIdx.includes(i) ? ' class="stub"' : ''}>${escHtml(p)}</th>`).join('');
+  let body = '';
+  rowsDef.forEach(rd => {
+    const key = rd[0], label = rd[1], cls = rd[2] || '';
+    if (cls === 'grp') { body += `<tr class="grp"><td colspan="${P + 1}">${escHtml(label)}</td></tr>`; return; }
+    const arr = (obj || {})[key] || [];
+    if (!arr.some(isNum)) return;
+    body += `<tr class="${cls}"><td>${escHtml(label)}</td>` + Array.from({ length: P }, (_, i) =>
+      `<td${D.stubIdx.includes(i) ? ' class="stub"' : ''}>${fmtNum(arr[i])}</td>`).join('') + '</tr>';
+  });
+  (calcRows || []).forEach(cr => {
+    if (!cr.vals.some(isNum)) return;
+    body += `<tr class="calc"><td>${escHtml(cr.label)}</td>` + cr.vals.map((v, i) =>
+      `<td${D.stubIdx.includes(i) ? ' class="stub"' : ''}>${cr.fmt ? cr.fmt(v) : fmtNum(v)}</td>`).join('') + '</tr>';
+  });
+  return `<div style="overflow-x:auto"><table class="fin-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
+function tieBadge(label, states) {
+  const worst = states.includes('fail') ? 'fail' : states.every(s => s === 'na') ? 'na' : 'pass';
+  const txt = worst === 'pass' ? label + ' ties' : worst === 'fail' ? label + ' does NOT tie' : label + ' — not checkable';
+  return `<span class="tie-badge ${worst}" title="${states.join(', ')}">${txt}</span>`;
+}
+function renderFinancials() {
+  const fin = A.fin || {}, D = A.derived;
+  const pr = fin.page_refs || {};
+  let html = '';
+  html += `<div class="section-block"><div class="section-label">Reconciliation
+      ${tieBadge('Balance sheet', D.tie.bs)} ${tieBadge('Cash flow', D.tie.cf)}
+    </div>
+    <div class="narrative" style="font-size:12px;color:var(--text-dim)">Checked in the browser, not by the model: assets vs equity+liabilities per period (0.5% tolerance), and CFO+CFI+CFF vs net change in cash (2%). A fail means the extraction mis-read a statement — re-run that step before trusting anything downstream.</div></div>`;
+  html += secBlock('Statement of profit & loss', stmtTable(PNL_ROWS, fin.pnl, D, [
+    { label: 'EBITDA (calc)', vals: D.ebitda },
+    { label: 'EBITDA margin', vals: D.ebitda_margin, fmt: fmtPct },
+    { label: 'PAT margin', vals: D.pat_margin, fmt: fmtPct }
+  ]), pr.pnl, 'financial|restated');
+  html += secBlock('Balance sheet', stmtTable(BS_ROWS, fin.balance_sheet, D, [
+    { label: 'Total borrowings (calc)', vals: D.borrowings },
+    { label: 'Net debt (calc)', vals: D.net_debt }
+  ]), pr.balance_sheet, 'financial|restated');
+  html += secBlock('Cash flow statement', stmtTable(CF_ROWS, fin.cash_flow, D, [
+    { label: 'Free cash flow (CFO − capex)', vals: D.fcf }
+  ]), pr.cash_flow, 'financial|restated');
+
+  const RATIO_GROUPS = [
+    ['Profitability', [
+      ['Gross margin', D.gross_margin, fmtPct], ['EBITDA margin', D.ebitda_margin, fmtPct], ['PAT margin', D.pat_margin, fmtPct]
+    ]],
+    ['Returns', [
+      ['ROE', D.roe, fmtPct], ['ROCE', D.roce, fmtPct], ['ROA', D.roa, fmtPct]
+    ]],
+    ['Leverage', [
+      ['Debt / equity', D.de, fmtX], ['Net debt / EBITDA', D.nd_ebitda, fmtX], ['Interest cover', D.int_cover, fmtX]
+    ]],
+    ['Working capital', [
+      ['Receivable days', D.recv_days, fmtDays], ['Inventory days', D.inv_days, fmtDays], ['Payable days', D.pay_days, fmtDays], ['Cash conversion cycle', D.ccc, fmtDays], ['Asset turnover', D.asset_turn, fmtX]
+    ]],
+    ['Cash & capex', [
+      ['CFO / PAT', D.cfo_pat, fmtX], ['Capex / revenue', D.capex_pct, fmtPct], ['CWIP / net block', D.cwip_nb, fmtPct]
+    ]]
+  ];
+  const P = D.periods.length;
+  let rbody = '';
+  RATIO_GROUPS.forEach(gr => {
+    rbody += `<tr class="grp"><td colspan="${P + 1}">${gr[0]}</td></tr>`;
+    gr[1].forEach(r => {
+      if (!r[1].some(isNum)) return;
+      rbody += `<tr><td>${r[0]}</td>` + r[1].map((v, i) => `<td${D.stubIdx.includes(i) ? ' class="stub"' : ''}>${r[2](v)}</td>`).join('') + '</tr>';
+    });
+  });
+  html += secBlock('Ratios',
+    `<div style="overflow-x:auto"><table class="fin-table"><thead><tr><th>Ratio</th>${D.periods.map((p, i) => `<th${D.stubIdx.includes(i) ? ' class="stub"' : ''}>${escHtml(p)}</th>`).join('')}</tr></thead><tbody>${rbody}</tbody></table></div>
+    <div class="narrative" style="font-size:12px;color:var(--text-dim)">All ratios computed in the browser from the statements above — the model never does arithmetic. Working-capital days are on revenue (not COGS); return ratios use average balances; stub periods are excluded from days, turnover and CAGRs.</div>`);
+  $('tab-financials').innerHTML = html;
+}
+
+/* ═══════════ BUSINESS & INDUSTRY TAB ═══════════ */
+function renderBusiness() {
+  const biz = A.biz || {}, b = biz.business || {}, ind = biz.industry || {}, mg = biz.management || {}, ana = A.ana || {};
+  const pr = biz.page_refs || {};
+  let html = '';
+
+  let bizInner = '';
+  if (b.description) bizInner += `<div class="narrative">${escHtml(b.description)}</div>`;
+  if ((ana.business_view || {}).model_narrative) bizInner += `<div class="narrative">${escHtml(ana.business_view.model_narrative)}</div>`;
+  if ((ana.business_view || {}).moat) bizInner += `<div class="narrative"><strong>Moat:</strong> ${escHtml(ana.business_view.moat)}</div>`;
+  const streams = (b.revenue_streams || []).map(s => `<tr><td>${escHtml(s.stream)}</td><td>${escHtml(s.note)}</td></tr>`);
+  if (streams.length) bizInner += kvTable([{t:'Revenue stream'},{t:'Note'}], streams);
+  html += secBlock('Business model', bizInner, pr.business, 'business');
+
+  const seg = (b.segment_mix || []).map(s => `<tr><td>${escHtml(s.segment)}</td><td class="num">${escHtml(s.share)}</td><td>${escHtml(s.period)}</td></tr>`);
+  const geo = (b.geographic_mix || []).map(s => `<tr><td>${escHtml(s.region)}</td><td class="num">${escHtml(s.share)}</td></tr>`);
+  html += secBlock('Revenue mix',
+    `<div class="two-col">
+      <div>${kvTable([{t:'Segment'},{t:'Share',num:1},{t:'Period'}], seg)}</div>
+      <div>${kvTable([{t:'Geography'},{t:'Share',num:1}], geo)}</div>
+    </div>`);
+
+  const cc = b.customer_concentration || {};
+  const conc = [
+    cc.top_1 ? `<tr><td>Top 1 customer</td><td class="num">${escHtml(cc.top_1)}</td></tr>` : '',
+    cc.top_5 ? `<tr><td>Top 5 customers</td><td class="num">${escHtml(cc.top_5)}</td></tr>` : '',
+    cc.top_10 ? `<tr><td>Top 10 customers</td><td class="num">${escHtml(cc.top_10)}</td></tr>` : '',
+    b.supplier_concentration ? `<tr><td>Supplier concentration</td><td class="num">${escHtml(b.supplier_concentration)}</td></tr>` : ''
+  ].filter(Boolean);
+  const cost = (b.cost_structure || []).map(c => `<tr><td>${escHtml(c.item)}</td><td class="num">${escHtml(c.pct_of_revenue)}</td><td>${escHtml(c.period)}</td></tr>`);
+  html += secBlock('Concentration & cost structure',
+    `<div class="two-col">
+      <div>${kvTable([{t:'Concentration'},{t:'% of revenue',num:1}], conc)}</div>
+      <div>${kvTable([{t:'Cost head'},{t:'% of revenue',num:1},{t:'Period'}], cost)}</div>
+    </div>`);
+
+  /* Flexible KPI table: union of periods across metrics */
+  const kpis = b.operating_kpis || [];
+  if (kpis.length) {
+    const periods = [];
+    kpis.forEach(k => (k.values || []).forEach(v => { if (v.period && !periods.includes(v.period)) periods.push(v.period); }));
+    let khead = '<th>Operating metric</th>' + periods.map(p => `<th class="num">${escHtml(p)}</th>`).join('') + '<th>Why it matters</th>';
+    let kbody = kpis.map(k => {
+      const map = {}; (k.values || []).forEach(v => map[v.period] = v.value);
+      return `<tr><td>${escHtml(k.metric)}</td>` + periods.map(p => `<td class="num">${escHtml(map[p] !== undefined ? map[p] : '—')}</td>`).join('') + `<td style="font-size:12px;color:var(--text-muted)">${escHtml(k.why_it_matters || '')}</td></tr>`;
+    }).join('');
+    html += secBlock('Operating KPIs — industry-specific',
+      `<div style="overflow-x:auto"><table class="val-table"><thead><tr>${khead}</tr></thead><tbody>${kbody}</tbody></table></div>
+      ${b.capacity_and_utilization ? `<div class="narrative">Capacity & utilisation: ${escHtml(b.capacity_and_utilization)}</div>` : ''}
+      ${b.employees ? `<div class="narrative">Employees: ${escHtml(b.employees)}</div>` : ''}`);
+  }
+
+  let indInner = '';
+  const indTiles = [
+    tile('Market size', escHtml(ind.market_size || '—')),
+    tile('Growth CAGR', escHtml(ind.growth_cagr || '—')),
+    tile('Company position', escHtml(ind.company_market_position || '—'))
+  ];
+  indInner += `<div class="mgrid" style="margin-bottom:1rem">${indTiles.join('')}</div>`;
+  if (ind.is_commissioned_report) indInner += `<div class="narrative"><span class="chip cautious">Commissioned report</span> &nbsp;Industry chapter is a paid report (${escHtml(ind.source_report || 'unnamed')}) — treat sizing and growth numbers as the optimistic end.</div>`;
+  if ((ana.industry_view || {}).narrative) indInner += `<div class="narrative">${escHtml(ana.industry_view.narrative)}</div>`;
+  if (ind.competitive_landscape) indInner += `<div class="narrative">${escHtml(ind.competitive_landscape)}</div>`;
+  if (ind.regulatory_environment) indInner += `<div class="narrative"><strong>Regulatory:</strong> ${escHtml(ind.regulatory_environment)}</div>`;
+  const tw = ((ana.industry_view || {}).tailwinds || []).map(t => `<li>${escHtml(t)}</li>`).join('');
+  const hw = ((ana.industry_view || {}).headwinds || []).map(t => `<li>${escHtml(t)}</li>`).join('');
+  if (tw || hw) indInner += `<div class="two-col"><div><div class="bb-label" style="color:var(--green)">Tailwinds</div><ul class="plain">${tw}</ul></div><div><div class="bb-label" style="color:var(--red)">Headwinds</div><ul class="plain">${hw}</ul></div></div>`;
+  html += secBlock('Industry', indInner, pr.industry, 'industry');
+
+  if ((ana.business_view || {}).growth_drivers_check) {
+    html += secBlock('Growth drivers — claims vs record', `<div class="narrative">${escHtml(ana.business_view.growth_drivers_check)}</div>`);
+  }
+
+  let mgInner = '';
+  const pm = (mg.promoters || []).map(p => `<tr><td>${escHtml(p.name)}</td><td>Promoter</td><td>${escHtml(p.background)}</td></tr>`);
+  const km = (mg.kmp || []).map(p => `<tr><td>${escHtml(p.name)}</td><td>${escHtml(p.role)}</td><td>${escHtml(p.background)}</td></tr>`);
+  mgInner += kvTable([{t:'Name'},{t:'Role'},{t:'Background'}], pm.concat(km));
+  if (mg.notes) mgInner += `<div class="narrative">${escHtml(mg.notes)}</div>`;
+  if (ana.management_view) mgInner += `<div class="narrative"><strong>Assessment:</strong> ${escHtml(ana.management_view)}</div>`;
+  html += secBlock('Management & promoters', mgInner, pr.management, 'management|promoter|organi');
+
+  const sc = (ana.risk_scorecard || []).map(r =>
+    `<tr><td>${escHtml(r.criteria)}</td><td><span class="score-chip ${escHtml(r.rating)}">${escHtml(r.rating)}</span></td><td style="font-size:12.5px;color:var(--text-muted)">${escHtml(r.comment)}</td></tr>`).join('');
+  if (sc) html += secBlock('Risk scorecard', `<table class="val-table"><thead><tr><th>Criteria</th><th>Risk</th><th>Comment</th></tr></thead><tbody>${sc}</tbody></table>`);
+
+  $('tab-business').innerHTML = html;
+}
+
+/* ═══════════ DILIGENCE TAB ═══════════ */
+function renderDiligence() {
+  const dil = A.dil || {}, ana = A.ana || {};
+  const pr = dil.page_refs || {};
+  let html = '';
+
+  const sevRank = { high: 0, medium: 1, low: 2 };
+  const flags = ((ana.red_flags || []).slice()).sort((a, b) => (sevRank[a.severity] ?? 3) - (sevRank[b.severity] ?? 3));
+  if (flags.length) {
+    html += secBlock('Red flags', flags.map(f =>
+      `<div class="flag-card ${escHtml(f.severity)}">
+        <div class="flag-head"><span class="flag-title">${escHtml(f.flag)}</span><span class="flag-meta">${escHtml(f.severity)} · ${escHtml(f.category)}</span></div>
+        ${f.evidence ? `<div class="flag-ev">${escHtml(f.evidence)}</div>` : ''}
+      </div>`).join(''));
+  }
+
+  const lit = dil.litigation || {};
+  const litSum = (lit.summary || []).map(l => `<tr><td>${escHtml(l.category)}</td><td class="num">${escHtml(String(l.count ?? '—'))}</td><td class="num">${escHtml(l.amount || '—')}</td></tr>`);
+  const litMat = (lit.material_cases || []).map(l => `<tr><td>${escHtml(l.party)}</td><td>${escHtml(l.forum)}</td><td class="num">${escHtml(l.amount)}</td><td>${escHtml(l.description)}</td></tr>`);
+  const cl = dil.contingent_liabilities || {};
+  const clRows = (cl.items || []).map(c => `<tr><td>${escHtml(c.item)}</td><td class="num">${escHtml(c.amount)}</td></tr>`);
+  html += secBlock('Litigation & contingent liabilities',
+    kvTable([{t:'Category'},{t:'Count',num:1},{t:'Amount',num:1}], litSum)
+    + (litMat.length ? `<div class="section-label" style="margin-top:0.5rem">Material cases</div>` + kvTable([{t:'Party'},{t:'Forum'},{t:'Amount',num:1},{t:'Description'}], litMat) : '')
+    + (lit.total_amount_involved ? `<div class="narrative">Aggregate amount involved: <strong>${escHtml(lit.total_amount_involved)}</strong></div>` : '')
+    + (clRows.length || cl.total ? `<div class="section-label" style="margin-top:0.5rem">Contingent liabilities ${cl.total ? '— total ' + escHtml(cl.total) : ''}</div>` + (clRows.length ? kvTable([{t:'Item'},{t:'Amount',num:1}], clRows) : '') : ''),
+    pr.litigation, 'litigation|legal');
+
+  const rpt = dil.related_party_transactions || {};
+  const rptY = (rpt.by_year || []).map(r => `<tr><td>${escHtml(r.period)}</td><td class="num">${escHtml(r.total_amount)}</td><td class="num">${escHtml(r.pct_of_revenue)}</td></tr>`);
+  const rptM = (rpt.material || []).map(r => `<tr><td>${escHtml(r.counterparty)}</td><td>${escHtml(r.relationship)}</td><td>${escHtml(r.nature)}</td><td class="num">${escHtml(r.amount)}</td><td>${escHtml(r.period)}</td></tr>`);
+  html += secBlock('Related-party transactions',
+    kvTable([{t:'Period'},{t:'Total RPT',num:1},{t:'% of revenue',num:1}], rptY)
+    + (rptM.length ? `<div class="section-label" style="margin-top:0.5rem">Material transactions</div>` + kvTable([{t:'Counterparty'},{t:'Relationship'},{t:'Nature'},{t:'Amount',num:1},{t:'Period'}], rptM) : ''),
+    pr.rpt, 'financial|restated|related part');
+
+  const ind = dil.indebtedness || {};
+  const fac = (ind.facilities || []).map(f => `<tr><td>${escHtml(f.lender)}</td><td>${escHtml(f.type)}</td><td class="num">${escHtml(f.sanctioned)}</td><td class="num">${escHtml(f.outstanding)}</td><td class="num">${escHtml(f.interest_rate)}</td><td>${escHtml(f.security)}</td><td style="font-size:12px">${escHtml(f.key_covenants)}</td></tr>`);
+  html += secBlock('Financial indebtedness' + (ind.total_outstanding ? ' — ' + escHtml(ind.total_outstanding) + ' outstanding' : ''),
+    `<div style="overflow-x:auto">${kvTable([{t:'Lender'},{t:'Type'},{t:'Sanctioned',num:1},{t:'Outstanding',num:1},{t:'Rate',num:1},{t:'Security'},{t:'Covenants'}], fac)}</div>`
+    + (ind.notes ? `<div class="narrative">${escHtml(ind.notes)}</div>` : ''),
+    pr.indebtedness, 'indebtedness|financial');
+
+  const am = dil.auditor_matters || {};
+  const amList = (arr, label) => (arr && arr.length) ? `<div class="bb-label" style="color:var(--amber)">${label}</div><ul class="plain">${arr.map(x => `<li>${escHtml(x)}</li>`).join('')}</ul>` : '';
+  const amInner = amList(am.qualifications, 'Qualifications') + amList(am.emphasis_of_matter, 'Emphasis of matter') + amList(am.caro_or_other_remarks, 'CARO / other remarks');
+  html += secBlock('Auditor matters', amInner || '<div class="narrative">Clean — no qualifications, emphasis of matter, or adverse remarks extracted.</div>');
+
+  const gc = (dil.group_companies || []).map(g => `<tr${g.negative_net_worth ? ' class="warn-row"' : ''}><td>${escHtml(g.name)}</td><td>${escHtml(g.note)}</td><td>${g.negative_net_worth ? 'Negative net worth' : ''}</td></tr>`);
+  if (gc.length) html += secBlock('Group companies', kvTable([{t:'Name'},{t:'Note'},{t:''}], gc));
+
+  const rf = (dil.top_risk_factors || []).map(r => `<li><strong>${escHtml(r.title)}</strong> — ${escHtml(r.gist)}</li>`).join('');
+  if (rf) html += secBlock('Top risk factors (as filed)', `<ul class="plain">${rf}</ul>`);
+
+  const th = ana.thesis || {};
+  html += secBlock('Thesis',
+    `<div class="two-col" style="margin-bottom:1rem">
+      <div class="bull-box"><div class="bb-label">Bull case</div><div class="bb-text">${escHtml(th.bull_case || '—')}</div></div>
+      <div class="bear-box"><div class="bb-label">Bear case</div><div class="bb-text">${escHtml(th.bear_case || '—')}</div></div>
+    </div>
+    ${(th.key_monitorables || []).length ? `<div class="bb-label" style="color:var(--gold)">Key monitorables</div><ul class="plain">${th.key_monitorables.map(m => `<li>${escHtml(m)}</li>`).join('')}</ul>` : ''}
+    ${th.analyst_verdict ? `<div class="narrative" style="margin-top:0.75rem"><strong>${escHtml(th.analyst_verdict)}</strong></div>` : ''}`);
+
+  $('tab-diligence').innerHTML = html;
+}
+
+/* ═══════════ EXCEL EXPORT ═══════════ */
+function colLetter(n) { /* 0-based → A, B, C ... */
+  let s = '';
+  n = n + 1;
+  while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); }
+  return s;
+}
+function buildStmtSheet(rowsDef, obj, D, calcRows) {
+  /* Returns { aoa, rowOf } where rowOf[key] = 1-based Excel row */
+  const aoa = [];
+  const rowOf = {};
+  aoa.push(['Line item'].concat(D.periods));
+  rowsDef.forEach(rd => {
+    const key = rd[0], label = rd[1], cls = rd[2] || '';
+    if (cls === 'grp') { aoa.push([label]); return; }
+    const arr = (obj || {})[key] || [];
+    if (!arr.some(isNum)) return;
+    aoa.push([label].concat(D.periods.map((p, i) => isNum(arr[i]) ? arr[i] : null)));
+    rowOf[key] = aoa.length;
+  });
+  (calcRows || []).forEach(cr => {
+    if (!cr.vals.some(isNum)) return;
+    aoa.push([cr.label].concat(cr.vals.map(v => isNum(v) ? v : null)));
+    rowOf[cr.key] = aoa.length;
+  });
+  return { aoa: aoa, rowOf: rowOf };
+}
+function exportExcel() {
+  if (!A) return;
+  const D = A.derived, fin = A.fin || {}, cap = A.cap || {}, biz = A.biz || {}, dil = A.dil || {}, ana = A.ana || {};
+  const P = D.periods.length;
+  const wb = XLSX.utils.book_new();
+
+  const pnl = buildStmtSheet(PNL_ROWS, fin.pnl, D, [{ key: 'ebitda', label: 'EBITDA (calc)', vals: D.ebitda }]);
+  const bs  = buildStmtSheet(BS_ROWS, fin.balance_sheet, D, [
+    { key: 'borrowings', label: 'Total borrowings (calc)', vals: D.borrowings },
+    { key: 'net_debt', label: 'Net debt (calc)', vals: D.net_debt }
+  ]);
+  const cf  = buildStmtSheet(CF_ROWS, fin.cash_flow, D, [{ key: 'fcf', label: 'Free cash flow (calc)', vals: D.fcf }]);
+
+  const wsPnl = XLSX.utils.aoa_to_sheet(pnl.aoa);
+  const wsBs  = XLSX.utils.aoa_to_sheet(bs.aoa);
+  const wsCf  = XLSX.utils.aoa_to_sheet(cf.aoa);
+  wsPnl['!cols'] = [{ wch: 34 }].concat(D.periods.map(() => ({ wch: 14 })));
+  wsBs['!cols']  = wsPnl['!cols']; wsCf['!cols'] = wsPnl['!cols'];
+  XLSX.utils.book_append_sheet(wb, wsPnl, 'PnL');
+  XLSX.utils.book_append_sheet(wb, wsBs, 'BS');
+  XLSX.utils.book_append_sheet(wb, wsCf, 'CF');
+
+  /* ── Ratios sheet: live formulas into the statement sheets ── */
+  const ref = (sheet, map, key, i) => map[key] ? `${sheet}!${colLetter(i + 1)}${map[key]}` : null;
+  const pRef = (k, i) => ref('PnL', pnl.rowOf, k, i);
+  const bRef = (k, i) => ref('BS', bs.rowOf, k, i);
+  const cRef = (k, i) => ref('CF', cf.rowOf, k, i);
+  /* average balance: first period or stub → closing only */
+  const bAvg = (k, i) => {
+    const cur = bRef(k, i);
+    if (!cur) return null;
+    if (i === 0 || D.stubIdx.includes(i)) return cur;
+    const prev = bRef(k, i - 1);
+    return prev ? `((${cur}+${prev})/2)` : cur;
+  };
+  const div = (a, b) => (a && b) ? `IFERROR(${a}/${b},"")` : null;
+
+  const ratioDefs = [
+    ['Profitability', null],
+    ['EBITDA margin', i => div(pRef('ebitda', i), pRef('revenue_operations', i))],
+    ['PAT margin', i => div(pRef('pat', i), pRef('revenue_operations', i))],
+    ['Returns', null],
+    ['ROE', i => div(pRef('pat', i), bAvg('total_equity', i))],
+    ['ROCE', i => {
+      const pbt = pRef('pbt', i), fc = pRef('finance_costs', i), eq = bAvg('total_equity', i), bo = bAvg('borrowings', i);
+      return (pbt && eq) ? `IFERROR((${pbt}${fc ? '+' + fc : ''})/(${eq}${bo ? '+' + bo : ''}),"")` : null;
+    }],
+    ['ROA', i => div(pRef('pat', i), bAvg('total_assets', i))],
+    ['Leverage', null],
+    ['Debt / equity', i => div(bRef('borrowings', i), bRef('total_equity', i))],
+    ['Net debt / EBITDA', i => div(bRef('net_debt', i), pRef('ebitda', i))],
+    ['Interest cover', i => div(pRef('ebitda', i), pRef('finance_costs', i))],
+    ['Working capital', null],
+    ['Receivable days', i => D.stubIdx.includes(i) ? null : (div(bRef('trade_receivables', i), pRef('revenue_operations', i)) ? `IFERROR(${bRef('trade_receivables', i)}/${pRef('revenue_operations', i)}*365,"")` : null)],
+    ['Inventory days', i => D.stubIdx.includes(i) ? null : (bRef('inventories', i) && pRef('revenue_operations', i) ? `IFERROR(${bRef('inventories', i)}/${pRef('revenue_operations', i)}*365,"")` : null)],
+    ['Payable days', i => D.stubIdx.includes(i) ? null : (bRef('trade_payables', i) && pRef('revenue_operations', i) ? `IFERROR(${bRef('trade_payables', i)}/${pRef('revenue_operations', i)}*365,"")` : null)],
+    ['Asset turnover', i => D.stubIdx.includes(i) ? null : div(pRef('revenue_operations', i), bAvg('total_assets', i))],
+    ['Cash & capex', null],
+    ['CFO / PAT', i => div(cRef('cfo', i), pRef('pat', i))],
+    ['Capex / revenue', i => div(cRef('capex_ppe_purchase', i), pRef('revenue_operations', i))],
+    ['FCF', i => cRef('fcf', i) ? `IFERROR(${cRef('fcf', i)},"")` : null]
+  ];
+  const rAoa = [['Ratio'].concat(D.periods)];
+  const formulaCells = [];
+  ratioDefs.forEach(rd => {
+    const label = rd[0], fn = rd[1];
+    if (!fn) { rAoa.push([label]); return; }
+    const row = [label];
+    const fs = [];
+    for (let i = 0; i < P; i++) { const f = fn(i); fs.push(f); row.push(null); }
+    if (!fs.some(Boolean)) return;
+    rAoa.push(row);
+    formulaCells.push({ r: rAoa.length - 1, fs: fs });
+  });
+  const wsR = XLSX.utils.aoa_to_sheet(rAoa);
+  formulaCells.forEach(fc2 => {
+    fc2.fs.forEach((f, i) => {
+      if (!f) return;
+      const addr = colLetter(i + 1) + (fc2.r + 1);
+      wsR[addr] = { t: 'n', f: f };
+    });
+  });
+  wsR['!cols'] = [{ wch: 26 }].concat(D.periods.map(() => ({ wch: 14 })));
+  XLSX.utils.book_append_sheet(wb, wsR, 'Ratios');
+
+  /* ── Peers ── */
+  const pc = cap.peer_comparison || {};
+  const pAoa = [['Company', 'Revenue', 'EPS', 'P/E', 'RoNW %', 'NAV/share']];
+  if (pc.company_row) { const c = pc.company_row; pAoa.push([c.name, c.revenue, c.eps, c.pe, c.ronw_pct, c.nav_per_share]); }
+  (pc.peers || []).forEach(p => pAoa.push([p.name, p.revenue, p.eps, p.pe, p.ronw_pct, p.nav_per_share]));
+  const medPe = median((pc.peers || []).map(p => parseNum(p.pe)));
+  const medRonw = median((pc.peers || []).map(p => parseNum(p.ronw_pct)));
+  pAoa.push([]);
+  pAoa.push(['Peer median', '', '', medPe, medRonw, '']);
+  if (pc.source_note) { pAoa.push([]); pAoa.push([pc.source_note]); }
+  const wsP = XLSX.utils.aoa_to_sheet(pAoa);
+  wsP['!cols'] = [{ wch: 34 }, { wch: 14 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 12 }];
+  XLSX.utils.book_append_sheet(wb, wsP, 'Peers');
+
+  /* ── Issue & holders ── */
+  const iss = cap.issue || {}, sh = cap.shareholding || {};
+  const iAoa = [['Offer structure', '']];
+  iAoa.push(['Fresh issue', iss.fresh_issue_amount]);
+  iAoa.push(['Offer for sale', iss.ofs_amount_or_shares]);
+  iAoa.push(['Total issue size', iss.total_issue_size]);
+  iAoa.push(['Face value', iss.face_value]);
+  iAoa.push(['Pre-issue shares outstanding', cap.pre_issue_shares_outstanding]);
+  iAoa.push(['General corporate purposes %', iss.gcp_pct]);
+  iAoa.push([]);
+  iAoa.push(['Use of fresh proceeds', 'Amount', '% of fresh']);
+  (iss.use_of_proceeds || []).forEach(u => iAoa.push([u.purpose, u.amount, u.pct_of_fresh]));
+  iAoa.push([]);
+  iAoa.push(['Shareholding', '', '']);
+  iAoa.push(['Promoter pre-IPO %', sh.promoter_pre_ipo_pct]);
+  iAoa.push(['Promoter post-IPO %', sh.promoter_post_ipo_pct]);
+  iAoa.push([]);
+  iAoa.push(['Top shareholders (pre-offer)', 'Category', '%']);
+  (sh.top_shareholders_pre || []).forEach(s => iAoa.push([s.name, s.category, s.pct]));
+  iAoa.push([]);
+  iAoa.push(['OFS sellers', 'Type', 'Size', 'WACA/share']);
+  (cap.ofs_sellers || []).forEach(s => iAoa.push([s.name, s.type, s.shares_or_amount, s.waca_per_share]));
+  iAoa.push([]);
+  iAoa.push(['Promoter WACA', '₹/share']);
+  (cap.promoter_waca || []).forEach(w => iAoa.push([w.name, w.waca_per_share]));
+  iAoa.push([]);
+  iAoa.push(['Pre-IPO issuances (18m)', 'Nature', 'Price/share', 'Parties']);
+  (cap.pre_ipo_placements_18m || []).forEach(p => iAoa.push([p.date, p.nature, p.price_per_share, p.parties]));
+  if (A.band) {
+    iAoa.push([]);
+    iAoa.push(['Price band entered', 'Floor', A.band.floor, 'Cap', A.band.cap]);
+  }
+  const wsI = XLSX.utils.aoa_to_sheet(iAoa);
+  wsI['!cols'] = [{ wch: 38 }, { wch: 20 }, { wch: 18 }, { wch: 22 }, { wch: 14 }];
+  XLSX.utils.book_append_sheet(wb, wsI, 'Issue');
+
+  /* ── Diligence ── */
+  const dAoa = [['Red flags', 'Severity', 'Category', 'Evidence']];
+  (ana.red_flags || []).forEach(f => dAoa.push([f.flag, f.severity, f.category, f.evidence]));
+  dAoa.push([]);
+  dAoa.push(['Risk scorecard', 'Rating', 'Comment']);
+  (ana.risk_scorecard || []).forEach(r => dAoa.push([r.criteria, r.rating, r.comment]));
+  dAoa.push([]);
+  dAoa.push(['Litigation summary', 'Count', 'Amount']);
+  ((dil.litigation || {}).summary || []).forEach(l => dAoa.push([l.category, l.count, l.amount]));
+  dAoa.push([]);
+  dAoa.push(['Material cases', 'Forum', 'Amount', 'Description']);
+  ((dil.litigation || {}).material_cases || []).forEach(l => dAoa.push([l.party, l.forum, l.amount, l.description]));
+  dAoa.push([]);
+  dAoa.push(['RPT by year', 'Total', '% of revenue']);
+  ((dil.related_party_transactions || {}).by_year || []).forEach(r => dAoa.push([r.period, r.total_amount, r.pct_of_revenue]));
+  dAoa.push([]);
+  dAoa.push(['Material RPTs', 'Relationship', 'Nature', 'Amount', 'Period']);
+  ((dil.related_party_transactions || {}).material || []).forEach(r => dAoa.push([r.counterparty, r.relationship, r.nature, r.amount, r.period]));
+  dAoa.push([]);
+  dAoa.push(['Facilities', 'Type', 'Sanctioned', 'Outstanding', 'Rate', 'Security', 'Covenants']);
+  ((dil.indebtedness || {}).facilities || []).forEach(f => dAoa.push([f.lender, f.type, f.sanctioned, f.outstanding, f.interest_rate, f.security, f.key_covenants]));
+  dAoa.push([]);
+  dAoa.push(['Auditor matters']);
+  const am = dil.auditor_matters || {};
+  (am.qualifications || []).forEach(x => dAoa.push(['Qualification', x]));
+  (am.emphasis_of_matter || []).forEach(x => dAoa.push(['Emphasis of matter', x]));
+  (am.caro_or_other_remarks || []).forEach(x => dAoa.push(['CARO / other', x]));
+  dAoa.push([]);
+  dAoa.push(['Thesis']);
+  const th = ana.thesis || {};
+  dAoa.push(['Bull case', th.bull_case]);
+  dAoa.push(['Bear case', th.bear_case]);
+  (th.key_monitorables || []).forEach(m => dAoa.push(['Monitorable', m]));
+  dAoa.push(['Verdict', (ana.verdict || '') + ' — ' + (ana.verdict_reason || '')]);
+  const wsD = XLSX.utils.aoa_to_sheet(dAoa);
+  wsD['!cols'] = [{ wch: 40 }, { wch: 16 }, { wch: 18 }, { wch: 46 }, { wch: 14 }, { wch: 26 }, { wch: 30 }];
+  XLSX.utils.book_append_sheet(wb, wsD, 'Diligence');
+
+  /* ── Sources & gaps ── */
+  const m = A.map || {};
+  const sAoa = [['Where to look in the DRHP']];
+  sAoa.push(['Printed page 1 is PDF page', isNum(A.pageOffset) ? A.pageOffset + 1 : 'not calibrated']);
+  sAoa.push([]);
+  sAoa.push(['Not extracted — where to find it', 'Chapter', 'Printed pp.', 'What is there']);
+  (m.gap_index || []).forEach(g => sAoa.push([g.topic, g.where, g.pages, g.what_you_will_find]));
+  sAoa.push([]);
+  sAoa.push(['Inside the restated financials', 'Printed pp.']);
+  (m.financial_statements_index || []).forEach(f => sAoa.push([f.item, f.pages]));
+  sAoa.push([]);
+  sAoa.push(['Chapter', 'Start page', 'End page']);
+  (m.contents || []).forEach(c => sAoa.push([c.chapter, c.start_page, c.end_page]));
+  sAoa.push([]);
+  sAoa.push(['Page references used in this analysis', 'Printed pp.']);
+  [['P&L', (A.fin.page_refs || {}).pnl], ['Balance sheet', (A.fin.page_refs || {}).balance_sheet], ['Cash flow', (A.fin.page_refs || {}).cash_flow],
+   ['Offer', (A.cap.page_refs || {}).issue], ['Capital structure', (A.cap.page_refs || {}).capital_structure], ['Basis for offer price', (A.cap.page_refs || {}).basis_for_offer_price],
+   ['Business', (A.biz.page_refs || {}).business], ['Industry', (A.biz.page_refs || {}).industry], ['Management', (A.biz.page_refs || {}).management],
+   ['Litigation', (A.dil.page_refs || {}).litigation], ['Indebtedness', (A.dil.page_refs || {}).indebtedness], ['Related parties', (A.dil.page_refs || {}).rpt]
+  ].forEach(r => { if (r[1]) sAoa.push(r); });
+  const wsS = XLSX.utils.aoa_to_sheet(sAoa);
+  wsS['!cols'] = [{ wch: 46 }, { wch: 34 }, { wch: 16 }, { wch: 52 }];
+  XLSX.utils.book_append_sheet(wb, wsS, 'Sources');
+
+  const safe = (A.name || 'DRHP').replace(/[^\w\-]+/g, '_').slice(0, 40);
+  XLSX.writeFile(wb, safe + '_DRHP_model.xlsx');
+}
+$('btnExcel').addEventListener('click', () => {
+  try { exportExcel(); } catch (e) { showErr('Excel export failed: ' + e.message); }
+});
+
+/* ═══════════ INIT ═══════════ */
+$('testPdfBtn').addEventListener('click', testPdfRead);
+
+/* ═══════════ PERSISTENCE ═══════════ */
+function storageWorks() {
+  try {
+    localStorage.setItem('drhp_probe', '1');
+    const ok = localStorage.getItem('drhp_probe') === '1';
+    localStorage.removeItem('drhp_probe');
+    return ok;
+  } catch (e) { return false; }
+}
+const KEY_STORE = 'drhp_api_key';
+function saveKeyIfWanted() {
+  if (!storageWorks()) return;
+  try {
+    if ($('rememberKey').checked) localStorage.setItem(KEY_STORE, $('apiKey').value.trim());
+    else localStorage.removeItem(KEY_STORE);
+  } catch (e) {}
+}
+$('rememberKey').addEventListener('change', saveKeyIfWanted);
+$('apiKey').addEventListener('change', saveKeyIfWanted);
+$('apiKey').addEventListener('blur', saveKeyIfWanted);
+
+/* Save / load a finished analysis as a file — works even when the browser blocks storage */
+$('btnSaveJson').addEventListener('click', () => {
+  if (!A) return;
+  const blob = new Blob([JSON.stringify(A, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (A.name || 'DRHP').replace(/[^\w\-]+/g, '_').slice(0, 40) + '_analysis.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+});
+$('btnLoadJson').addEventListener('click', () => $('jsonInput').click());
+$('jsonInput').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const b = JSON.parse(r.result);
+      if (!b.fin) throw new Error('That file is not a saved DRHP analysis.');
+      A = b;
+      if (storageWorks()) saveToHistory(A);
+      clearErr();
+      renderAll();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err) { showErr('Could not load that file: ' + err.message); }
+  };
+  r.readAsText(f);
+});
+
+(function init() {
+  $('modelSelect').innerHTML = MODELS.map(m => `<option value="${m.id}">${escHtml(m.label)}</option>`).join('');
+  if (storageWorks()) {
+    try {
+      const k = localStorage.getItem(KEY_STORE);
+      if (k) { $('apiKey').value = k; $('rememberKey').checked = true; }
+    } catch (e) {}
+  } else {
+    const w = $('storageWarn');
+    w.style.display = '';
+    w.innerHTML = 'This page cannot save anything on this device — the browser is blocking local storage. That is normal when an HTML file is opened straight from Downloads on a phone. The key, the theme and past analyses will all be lost on reload. Move the file to a folder and open it in desktop Chrome, or use <strong>Save analysis to file</strong> after each run and reload it later with <strong>Load an analysis from a file</strong>.';
+  }
+  renderHistoryChips();
+  updateRunBtn();
+})();
+
+</script>
+</body>
+</html>
