@@ -168,7 +168,7 @@ for key, default_val in defaults.items():
 # ============================================================
 # UI
 # ============================================================
-st.title("📄 Murli Steel Invoicer")
+st.title("📄 Murli Steel Invoicer (v2.1)")
 
 # --- Document Configuration ---
 doc_type = st.radio(
